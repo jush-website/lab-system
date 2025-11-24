@@ -1087,8 +1087,8 @@ export default function App() {
           {viewMode === 'borrow-request' && currentSession && (
              <div className="flex flex-col lg:flex-row gap-6 lg:h-full lg:overflow-hidden">
                 {/* Left Column: Search - Mobile: Fixed Height with scroll / Desktop: Full height */}
-                {/* 🔴 Modified: Changed min-h-[400px] to h-[500px] (mobile) to force internal scroll and prevent page expansion */}
-                <div className="flex-1 lg:w-7/12 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden h-[500px] lg:h-full lg:min-h-0">
+                {/* 🔴 Modified: Reduced height from h-[300px] to h-[520px] on mobile for better visibility of cart below */}
+                <div className="flex-1 lg:w-7/12 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden h-[520px] lg:h-full lg:min-h-0">
                    <div className="p-4 border-b bg-slate-50 shrink-0">
                       <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><Search className="w-4 h-4"/> 搜尋可用設備</h3>
                       <div className="relative">
