@@ -167,7 +167,7 @@ const AuthScreen = () => {
           <button type="submit" disabled={loading} className="w-full bg-teal-600 text-white py-3 rounded-lg font-bold hover:bg-teal-700 transition-colors">{loading?'處理中...':(isRegister?'註冊帳號':'登入系統')}</button>
         </form>
         <button onClick={() => {setIsRegister(!isRegister); setError('')}} className="w-full mt-4 text-sm text-slate-500 hover:text-teal-600">切換為 {isRegister ? '登入' : '註冊'}</button>
-        <button onClick={handleDemoLogin} className="w-full mt-2 text-sm text-slate-400 underline hover:text-teal-600">訪客登入 (免註冊)</button>
+      
       </div>
     </div>
   );
