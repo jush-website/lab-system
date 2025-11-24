@@ -1038,7 +1038,7 @@ export default function App() {
                         <td className="p-4 font-mono text-slate-500 whitespace-nowrap">{loan.returnDate || '-'}</td>
                         <td className="p-4 text-right sticky right-0 bg-white (loan.status === 'borrowed' ? 'bg-orange-50/30' : '')">
                           {loan.status === 'borrowed' && (
-                            <button onClick={()=>handleReturn(loan)} className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95 whitespace-nowrap flex items-center gap-1 ml-auto">
+                            <button onClick={()=>handleReturn(loan.id)} className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95 whitespace-nowrap flex items-center gap-1 ml-auto">
                               <CheckCircle className="w-3 h-3"/> 確認歸還
                             </button>
                           )}
