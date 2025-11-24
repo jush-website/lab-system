@@ -828,13 +828,13 @@ export default function App() {
                   <input type="text" placeholder="搜尋設備..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-teal-500"/>
                 </div>
                 <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0">
-                    <select value={selectedCategoryFilter} onChange={e=>setSelectedCategoryFilter(e.target.value)} className="border rounded-lg px-4 py-2 outline-none bg-white min-w-[137px]">
+                    <select value={selectedCategoryFilter} onChange={e=>setSelectedCategoryFilter(e.target.value)} className="border rounded-lg px-4 py-2 outline-none bg-white min-w-[139px]">
                       <option value="all">所有分類</option>
                       {categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                     <div className="relative">
                         <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <select value={sortOption} onChange={e=>setSortOption(e.target.value)} className="border rounded-lg pl-10 pr-4 py-2 outline-none bg-white min-w-[122px]">
+                        <select value={sortOption} onChange={e=>setSortOption(e.target.value)} className="border rounded-lg pl-10 pr-4 py-2 outline-none bg-white min-w-[120px]">
                             <option value="name">名稱排序</option>
                             <option value="quantity_desc">數量Z-A</option>
                             <option value="quantity_asc">數量A-Z</option>
