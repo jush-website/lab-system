@@ -828,7 +828,7 @@ export default function App() {
                   <input type="text" placeholder="搜尋設備..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-teal-500"/>
                 </div>
                 <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0">
-                    <select value={selectedCategoryFilter} onChange={e=>setSelectedCategoryFilter(e.target.value)} className="border rounded-lg px-4 py-2 outline-none bg-white min-w-[140px]">
+                    <select value={selectedCategoryFilter} onChange={e=>setSelectedCategoryFilter(e.target.value)} className="border rounded-lg px-4 py-2 outline-none bg-white min-w-[135px]">
                       <option value="all">所有分類</option>
                       {categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
