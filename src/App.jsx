@@ -37,7 +37,7 @@ import {
   Download, Filter, AlertTriangle, User, LayoutGrid, Menu, X, CheckCircle, 
   AlertCircle, Eye, EyeOff, ChevronRight, UserPlus, Calendar, FolderOpen,
   History, UserCheck, Phone, ArrowLeft, Clock, FileText, Hash, Home, 
-  Activity, Box, FileDown, ArrowUpRight, ArrowDownLeft, MousePointerClick, Sparkles, MoreVertical, Timer, ShoppingCart, Minus, ArrowUpDown, Copy, Camera, Image as ImageIcon, Upload
+  Activity, Box, FileDown, ArrowUpRight, ArrowDownLeft, MousePointerClick, Sparkles, MoreVertical, Timer, ShoppingCart, Minus, ArrowUpDown, Copy, Camera, Image as ImageIcon, Upload, CheckSquare
 } from 'lucide-react';
 
 // ==========================================
@@ -60,7 +60,7 @@ const db = getFirestore(app);
 const storage = getStorage(app); 
 const appId = 'lab-management-system-production';
 
-// --- 元件：自定義確認視窗 ---
+// --- 元件：自定義確認視窗 (一般/危險操作) ---
 const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isDangerous }) => {
   if (!isOpen) return null;
   return (
@@ -76,6 +76,94 @@ const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isDangerous
             <button onClick={onCancel} className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors">取消</button>
             <button onClick={onConfirm} className={`flex-1 px-4 py-2.5 text-white rounded-lg font-medium shadow-md transition-colors ${isDangerous ? 'bg-red-500 hover:bg-red-600' : 'bg-teal-600 hover:bg-teal-700'}`}>確認</button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- 元件：歸還數量確認視窗 ---
+const ReturnModal = ({ isOpen, loan, onConfirm, onCancel }) => {
+  const [returnQty, setReturnQty] = useState(1);
+
+  useEffect(() => {
+    if (loan) setReturnQty(loan.quantity);
+  }, [loan]);
+
+  if (!isOpen || !loan) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100">
+        <div className="p-6">
+          <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center mb-4 bg-green-100 text-green-600">
+            <CheckSquare className="w-6 h-6" />
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 mb-1 text-center">歸還確認</h3>
+          <p className="text-sm text-gray-500 mb-4 text-center">
+            {loan.equipmentName}<br/>
+            (目前借用: {loan.quantity})
+          </p>
+          
+          <div className="mb-6">
+            <label className="block text-sm font-bold text-slate-700 mb-2 text-center">本次歸還數量</label>
+            <div className="flex items-center justify-center gap-3">
+              <button 
+                onClick={() => setReturnQty(Math.max(1, returnQty - 1))}
+                className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200"
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+              <input 
+                type="number" 
+                className="w-20 text-center text-2xl font-bold border-b-2 border-slate-200 focus:border-green-500 outline-none pb-1"
+                value={returnQty}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (!isNaN(val)) setReturnQty(Math.max(1, Math.min(loan.quantity, val)));
+                }}
+              />
+              <button 
+                onClick={() => setReturnQty(Math.min(loan.quantity, returnQty + 1))}
+                className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="text-center mt-2 text-xs text-slate-400">
+              {returnQty === loan.quantity ? "全部歸還" : `部分歸還 (剩餘 ${loan.quantity - returnQty} 件)`}
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button onClick={onCancel} className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors">取消</button>
+            <button onClick={() => onConfirm(loan.id, returnQty, loan.quantity)} className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium shadow-md transition-colors">確認歸還</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- 元件：加入清單成功提示彈窗 ---
+const AddedToCartModal = ({ isOpen, item, onClose }) => {
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(onClose, 1500); // 1.5秒後自動關閉
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center pointer-events-none">
+      <div className="bg-slate-800/90 backdrop-blur text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in zoom-in fade-in duration-200 transform scale-110">
+        <div className="bg-teal-500 rounded-full p-2 text-white">
+          <CheckCircle className="w-6 h-6" />
+        </div>
+        <div>
+            <h4 className="font-bold text-lg">已加入借用清單</h4>
+            <p className="text-sm text-slate-300">{item?.name} x 1</p>
         </div>
       </div>
     </div>
@@ -195,7 +283,7 @@ export default function App() {
     totalEquipment: 0,
     totalBorrowed: 0,
     lowStockCount: 0,
-    recentActivity: []
+    groupedActivity: [] // Modified to store grouped activities
   });
 
   // UI State
@@ -206,6 +294,8 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', action: null });
+  const [returnDialog, setReturnDialog] = useState({ isOpen: false, loan: null }); // New state for return
+  const [addedItemModal, setAddedItemModal] = useState({ isOpen: false, item: null }); // New state for added item
   
   // Modals State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -239,11 +329,11 @@ export default function App() {
     return () => { unsubCat(); unsubSess(); };
   }, [user]);
 
-  // Dashboard Logic
+  // Dashboard Logic with GROUPING
   useEffect(() => {
     if (!user || viewMode !== 'dashboard') return;
     if (sessions.length === 0) {
-        setDashboardStats({ latestSessionId: null, latestSessionName: '尚無版次', totalEquipment: 0, totalBorrowed: 0, lowStockCount: 0, recentActivity: [] });
+        setDashboardStats({ latestSessionId: null, latestSessionName: '尚無版次', totalEquipment: 0, totalBorrowed: 0, lowStockCount: 0, groupedActivity: [] });
         return;
     }
     const latestSession = sessions[0];
@@ -263,23 +353,25 @@ export default function App() {
 
     const qLoans = query(collection(db, 'artifacts', appId, 'public', 'data', 'loans'), where('sessionId', '==', targetSessionId));
     const unsubLoans = onSnapshot(qLoans, (snap) => {
-      const events = [];
+      const rawEvents = [];
       snap.forEach(doc => {
         const data = doc.data();
         const loanId = doc.id;
-        events.push({
+        // Borrow Event
+        rawEvents.push({
           id: loanId + '_borrow',
           originalId: loanId,
           sessionId: data.sessionId,
           type: 'borrow',
-          date: data.borrowDate,
+          date: data.borrowDate, // String YYYY-MM-DD
           borrower: data.borrower,
           equipmentName: data.equipmentName,
           quantity: data.quantity,
           timestamp: data.createdAt ? data.createdAt.seconds : 0
         });
+        // Return Event
         if (data.status === 'returned' && data.returnDate) {
-          events.push({
+          rawEvents.push({
             id: loanId + '_return',
             originalId: loanId,
             sessionId: data.sessionId,
@@ -288,16 +380,38 @@ export default function App() {
             borrower: data.borrower,
             equipmentName: data.equipmentName,
             quantity: data.quantity,
-            timestamp: data.updatedAt ? data.updatedAt.seconds : (data.createdAt ? data.createdAt.seconds + 86400 : Date.now()/1000) 
+            // Logic: if update time is close to now, it's fresh. 
+            // If createdAt is old, we use updatedAt.
+            timestamp: data.updatedAt ? data.updatedAt.seconds : Date.now()/1000
           });
         }
       });
-      events.sort((a, b) => {
-        if (a.date > b.date) return -1;
-        if (a.date < b.date) return 1;
-        return b.timestamp - a.timestamp;
+
+      // Sort raw events by timestamp desc
+      rawEvents.sort((a, b) => b.timestamp - a.timestamp);
+
+      // Grouping Logic
+      const grouped = [];
+      rawEvents.forEach(event => {
+        // Try to find a group that matches: Same Type, Same Borrower, Timestamp within 60s
+        const group = grouped.find(g => 
+          g.type === event.type && 
+          g.borrower === event.borrower && 
+          Math.abs(g.timestamp - event.timestamp) < 60 &&
+          g.date === event.date
+        );
+
+        if (group) {
+            group.items.push({ name: event.equipmentName, quantity: event.quantity, id: event.id });
+        } else {
+            grouped.push({
+                ...event,
+                items: [{ name: event.equipmentName, quantity: event.quantity, id: event.id }]
+            });
+        }
       });
-      setDashboardStats(prev => ({ ...prev, recentActivity: events.slice(0, 10) }));
+
+      setDashboardStats(prev => ({ ...prev, groupedActivity: grouped.slice(0, 10) }));
     });
     return () => { unsubEquip(); unsubLoans(); };
   }, [user, viewMode, sessions]); 
@@ -325,6 +439,10 @@ export default function App() {
     const existing = cartItems.find(c => c.id === item.id);
     const available = getAvailability(item);
     if(available <= 0) { showToast("此設備已無庫存", "error"); return; }
+    
+    // Show Pop-up Modal instead of just toast
+    setAddedItemModal({ isOpen: true, item: item });
+
     if (existing) {
       if (existing.borrowQty < available) setCartItems(cartItems.map(c => c.id === item.id ? { ...c, borrowQty: c.borrowQty + 1 } : c));
       else showToast("已達最大可借數量", "error");
@@ -541,6 +659,7 @@ export default function App() {
     if (days <= 0) { showToast("借用天數錯誤", "error"); return; }
 
     try { 
+      // Use batch writes for atomicity if possible, but keeping it simple with Promise.all for now as structure matches original logic
       const promises = cartItems.map(async (item) => {
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'loans'), { 
           sessionId: currentSession.id, equipmentId: item.id, equipmentName: item.name, borrower: borrowForm.borrower, phone: borrowForm.phone, purpose: borrowForm.purpose, quantity: item.borrowQty, borrowDays: days, borrowDate: borrowForm.date, returnDate: null, status: 'borrowed', createdAt: serverTimestamp(), updatedAt: serverTimestamp() 
@@ -552,7 +671,61 @@ export default function App() {
     } catch (err) { showToast("借用失敗", "error"); } 
   };
 
-  const handleReturn = (loanId) => { setConfirmDialog({ isOpen: true, title: "歸還確認", message: `確定此設備已歸還嗎？`, isDangerous: false, action: async () => { try { const loanDoc = loans.find(l => l.id === loanId); if (!loanDoc) return; await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'loans', loanId), { returnDate: new Date().toISOString().split('T')[0], status: 'returned', updatedAt: serverTimestamp() }); await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', loanDoc.equipmentId), { borrowedCount: increment(-loanDoc.quantity) }); setConfirmDialog(p => ({...p, isOpen: false})); showToast("歸還完成"); } catch (err) { showToast("操作失敗", "error"); } } }); };
+  // 🟡 [NEW] Updated Return Logic with Partial Return Support
+  const initiateReturn = (loanId) => {
+      const loan = loans.find(l => l.id === loanId);
+      if (loan) setReturnDialog({ isOpen: true, loan });
+  };
+
+  const handleReturnConfirm = async (loanId, returnQty, originalQty) => {
+    try {
+        const loanDoc = loans.find(l => l.id === loanId);
+        if (!loanDoc) return;
+        
+        const isFullReturn = returnQty >= originalQty;
+
+        if (isFullReturn) {
+            // Full Return
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'loans', loanId), { 
+                returnDate: new Date().toISOString().split('T')[0], 
+                status: 'returned', 
+                updatedAt: serverTimestamp() 
+            });
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', loanDoc.equipmentId), { 
+                borrowedCount: increment(-originalQty) 
+            });
+            showToast("全部歸還完成");
+        } else {
+            // Partial Return
+            // 1. Update original loan (subtract returned qty)
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'loans', loanId), {
+                quantity: originalQty - returnQty,
+                updatedAt: serverTimestamp()
+            });
+
+            // 2. Create new 'Returned' record
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'loans'), {
+                ...loanDoc,
+                quantity: returnQty,
+                status: 'returned',
+                returnDate: new Date().toISOString().split('T')[0],
+                createdAt: serverTimestamp(), // Keep sort order roughly same
+                updatedAt: serverTimestamp()
+            });
+
+            // 3. Update Inventory
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', loanDoc.equipmentId), {
+                borrowedCount: increment(-returnQty)
+            });
+            showToast(`已歸還 ${returnQty} 個，剩餘 ${originalQty - returnQty} 個`);
+        }
+
+        setReturnDialog({ isOpen: false, loan: null });
+    } catch (err) {
+        console.error(err);
+        showToast("操作失敗", "error");
+    }
+  };
   
   // Filtering & Sorting
   const filteredEquipment = useMemo(() => {
@@ -609,9 +782,12 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row text-slate-800 font-sans">
       <ConfirmModal isOpen={confirmDialog.isOpen} title={confirmDialog.title} message={confirmDialog.message} onConfirm={confirmDialog.action} onCancel={()=>setConfirmDialog(p=>({...p, isOpen:false}))} isDangerous={confirmDialog.isDangerous} />
+      <ReturnModal isOpen={returnDialog.isOpen} loan={returnDialog.loan} onConfirm={handleReturnConfirm} onCancel={() => setReturnDialog({isOpen: false, loan: null})} />
+      <AddedToCartModal isOpen={addedItemModal.isOpen} item={addedItemModal.item} onClose={() => setAddedItemModal({isOpen: false, item: null})} />
+      
       {toast && <Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)} />}
 
-      {/* 🔴 [NEW] Mobile Sidebar Overlay */}
+      {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-20 md:hidden backdrop-blur-sm transition-opacity"
@@ -660,7 +836,7 @@ export default function App() {
           <div className="flex items-center gap-4">
              <button onClick={()=>setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2"><Menu/></button>
              <div>
-                {/* 🟡 [FIXED] Header Title with truncate and min-w-0 to prevent overflow */}
+                {/* Header Title */}
                 <div className="min-w-0 flex-1 pr-2">
                   <h2 className="text-lg md:text-2xl font-bold text-slate-800 truncate max-w-[200px] md:max-w-md">
                     {viewMode === 'sessions' && '版次管理'}
@@ -679,7 +855,7 @@ export default function App() {
              </div>
           </div>
           <div className="flex gap-2 flex-shrink-0">
-            {/* Buttons remain same */}
+            {/* Buttons */}
             {viewMode === 'equipment' && (
                 <>
                 <button onClick={()=>handleExportCSV()} className="bg-white border border-slate-300 text-slate-700 px-3 py-2 md:px-4 rounded-lg flex items-center gap-2 hover:bg-slate-50 shadow-sm transition-all active:scale-95"><FileDown className="w-4 h-4 text-teal-600"/> <span className="hidden sm:inline">匯出 CSV</span></button>
@@ -694,11 +870,9 @@ export default function App() {
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50">
           
-          {/* ... (Dashboard and Sessions Views - Unchanged) ... */}
-          
+          {/* Dashboard View */}
           {viewMode === 'dashboard' && (
              <div className="space-y-6 max-w-7xl mx-auto">
-                {/* ... dashboard content ... */}
                 <div className="flex items-center gap-2 mb-4"><div className="bg-teal-100 text-teal-700 p-2 rounded-lg"><Sparkles className="w-5 h-5"/></div><span className="text-sm font-bold text-slate-500">目前鎖定：<span className="text-teal-700 text-base">{dashboardStats.latestSessionName}</span></span></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <StatCard title="最新版次設備總數" value={dashboardStats.totalEquipment} icon={Box} colorClass="bg-teal-500" onClick={() => handleStatClick('equipment')} />
@@ -706,23 +880,31 @@ export default function App() {
                     <StatCard title="低庫存警示" value={dashboardStats.lowStockCount} subtext="庫存低於 3 件" icon={AlertTriangle} colorClass="bg-red-500" onClick={() => handleStatClick('lowstock')} />
                     <StatCard title="管理中版次總數" value={sessions.length} icon={FolderOpen} colorClass="bg-blue-500" onClick={() =>setViewMode('sessions')} />
                 </div>
-                {/* ... recent activity ... */}
+                {/* 🟡 [MODIFIED] Grouped Activity Feed */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col h-[400px]">
                     <div className="flex items-center justify-between mb-4"><h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><History className="w-5 h-5 text-teal-600"/> {dashboardStats.latestSessionName} - 最新借用動態</h3></div>
                     <div className="flex-1 overflow-auto">
                         <table className="w-full text-left min-w-[500px]">
-                        <thead className="text-slate-400 text-xs uppercase bg-slate-50 sticky top-0 z-10"><tr><th className="p-3">日期</th><th className="p-3">動作</th><th className="p-3">借用人</th><th className="p-3">物品</th></tr></thead>
+                        <thead className="text-slate-400 text-xs uppercase bg-slate-50 sticky top-0 z-10"><tr><th className="p-3">日期</th><th className="p-3">動作</th><th className="p-3">借用人</th><th className="p-3">物品清單</th></tr></thead>
                         <tbody className="divide-y divide-slate-50 text-sm">
-                            {dashboardStats.recentActivity.map(item => (
-                            <tr key={item.id} onClick={() => handleActivityClick(item)} className="hover:bg-slate-50/80 cursor-pointer transition-colors group">
-                                <td className="p-3 text-slate-500">{item.date}</td>
-                                <td className="p-3">{item.type === 'borrow' ? <span className="flex items-center gap-1 text-orange-600 bg-orange-50 px-2 py-0.5 rounded text-xs w-fit font-bold border border-orange-100"><ArrowUpRight className="w-3 h-3"/> 借出</span> : <span className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded text-xs w-fit font-bold border border-green-100"><ArrowDownLeft className="w-3 h-3"/> 歸還</span>}</td>
-                                <td className="p-3 font-medium text-slate-700">{item.borrower}</td>
-                                <td className="p-3 group-hover:text-teal-600 transition-colors">{item.equipmentName} <span className="text-xs bg-slate-100 px-1 rounded text-slate-500">x{item.quantity}</span></td>
+                            {dashboardStats.groupedActivity.map((group, idx) => (
+                            <tr key={idx} onClick={() => handleActivityClick(group)} className="hover:bg-slate-50/80 cursor-pointer transition-colors group">
+                                <td className="p-3 text-slate-500 align-top">{group.date}</td>
+                                <td className="p-3 align-top">{group.type === 'borrow' ? <span className="flex items-center gap-1 text-orange-600 bg-orange-50 px-2 py-0.5 rounded text-xs w-fit font-bold border border-orange-100"><ArrowUpRight className="w-3 h-3"/> 借出</span> : <span className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded text-xs w-fit font-bold border border-green-100"><ArrowDownLeft className="w-3 h-3"/> 歸還</span>}</td>
+                                <td className="p-3 font-medium text-slate-700 align-top">{group.borrower}</td>
+                                <td className="p-3 align-top">
+                                    <div className="flex flex-wrap gap-2">
+                                        {group.items.map((item, i) => (
+                                            <span key={i} className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 px-2 py-1 rounded text-xs border border-slate-200">
+                                                {item.name} <span className="font-bold text-slate-500">x{item.quantity}</span>
+                                            </span>
+                                        ))}
+                                    </div>
+                                </td>
                             </tr>
                             ))}
-                            {dashboardStats.recentActivity.length===0 && <tr><td colSpan="4" className="p-6 text-center text-slate-400">本版次暫無近期活動</td></tr>}
+                            {dashboardStats.groupedActivity.length===0 && <tr><td colSpan="4" className="p-6 text-center text-slate-400">本版次暫無近期活動</td></tr>}
                         </tbody>
                         </table>
                     </div>
@@ -736,6 +918,7 @@ export default function App() {
              </div>
           )}
           
+          {/* Sessions View */}
           {viewMode === 'sessions' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
               {sessions.map(sess => (
@@ -768,7 +951,7 @@ export default function App() {
             </div>
           )}
 
-          {/* 🧪 EQUIPMENT VIEW (Scrollable & Sticky) */}
+          {/* Equipment View */}
           {viewMode === 'equipment' && currentSession && (
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
@@ -835,7 +1018,7 @@ export default function App() {
                 {filteredEquipment.length===0 && <div className="text-center py-10 text-slate-400">無資料</div>}
               </div>
 
-              {/* 🟡 [FIXED] Desktop Table View (Removed max-h, allow full scroll) */}
+              {/* Desktop Table View */}
               <div className="hidden md:block bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 border-b text-sm uppercase text-slate-500 sticky top-0 z-20 shadow-sm">
@@ -900,10 +1083,11 @@ export default function App() {
             </div>
           )}
 
-          {/* ... (Borrow Request View - Unchanged) ... */}
+          {/* Borrow Request View - 🟡 [LAYOUT FIXED] Mobile Flow & Larger Lists */}
           {viewMode === 'borrow-request' && currentSession && (
-             <div className="flex flex-col lg:flex-row gap-6 h-full overflow-hidden">
-                <div className="flex-1 lg:w-7/12 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden h-[45%] lg:h-full min-h-[300px]">
+             <div className="flex flex-col lg:flex-row gap-6 lg:h-full lg:overflow-hidden">
+                {/* Left Column: Search - Mobile: Full height flow / Desktop: Fixed height split */}
+                <div className="flex-1 lg:w-7/12 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[400px] lg:min-h-0 lg:h-full">
                    <div className="p-4 border-b bg-slate-50 shrink-0">
                       <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><Search className="w-4 h-4"/> 搜尋可用設備</h3>
                       <div className="relative">
@@ -911,7 +1095,7 @@ export default function App() {
                         <input type="text" placeholder="輸入名稱搜尋..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-teal-500"/>
                       </div>
                    </div>
-                   <div className="flex-1 overflow-y-auto p-2 space-y-2 max-h-[300px] md:max-h-full">
+                   <div className="flex-1 overflow-y-auto p-2 space-y-2 lg:max-h-full">
                       {filteredEquipment.map(item => {
                         const available = getAvailability(item);
                         if(available <= 0) return null; 
@@ -932,7 +1116,8 @@ export default function App() {
                    </div>
                 </div>
 
-                <div className="flex-1 lg:w-5/12 flex flex-col gap-4 overflow-y-auto h-[55%] lg:h-full">
+                {/* Right Column: Cart & Form - Mobile: Flow below / Desktop: Fixed height split */}
+                <div className="flex-1 lg:w-5/12 flex flex-col gap-4 lg:overflow-y-auto lg:h-full">
                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 shrink-0">
                       <h3 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-indigo-600"/> 借用清單 ({cartItems.length})</h3>
                       {cartItems.length === 0 ? (
@@ -940,7 +1125,8 @@ export default function App() {
                           尚未選擇任何設備<br/>請從列表點擊 + 加入
                         </div>
                       ) : (
-                        <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                        // 🟡 [FIXED] Increased Max Height for better visibility
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                            {cartItems.map(item => (
                              <div key={item.id} className="flex items-center justify-between p-2 bg-indigo-50 rounded-lg border border-indigo-100">
                                 <div className="flex-1 min-w-0 pr-2">
@@ -965,7 +1151,7 @@ export default function App() {
                         </div>
                       )}
                    </div>
-                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex-1 min-h-0 overflow-y-auto">
+                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex-1 min-h-0 lg:overflow-y-auto">
                       <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><UserCheck className="w-5 h-5 text-indigo-600"/> 借用人資訊</h3>
                       <form onSubmit={handleBatchBorrow} className="space-y-3">
                         <div className="grid grid-cols-2 gap-3">
@@ -994,7 +1180,7 @@ export default function App() {
              </div>
           )}
 
-          {/* 🟡 [FIXED] LOAN HISTORY VIEW (Removed max-h) */}
+          {/* Loan History View */}
           {viewMode === 'loans' && currentSession && (
             <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
               <div className="p-4 border-b bg-slate-50 flex justify-between items-center sticky top-0 z-30">
@@ -1038,7 +1224,8 @@ export default function App() {
                         <td className="p-4 font-mono text-slate-500 whitespace-nowrap">{loan.returnDate || '-'}</td>
                         <td className="p-4 text-right sticky right-0 bg-white (loan.status === 'borrowed' ? 'bg-orange-50/30' : '')">
                           {loan.status === 'borrowed' && (
-                            <button onClick={()=>handleReturn(loan.id)} className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95 whitespace-nowrap flex items-center gap-1 ml-auto">
+                            // 🟡 [MODIFIED] Use initiateReturn instead of handleReturn directly
+                            <button onClick={()=>initiateReturn(loan.id)} className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95 whitespace-nowrap flex items-center gap-1 ml-auto">
                               <CheckCircle className="w-3 h-3"/> 確認歸還
                             </button>
                           )}
@@ -1052,7 +1239,7 @@ export default function App() {
             </div>
           )}
 
-          {/* ⚙️ CATEGORIES VIEW */}
+          {/* Categories View */}
           {viewMode === 'categories' && (
              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
                {categories.map(c => (
@@ -1167,20 +1354,6 @@ export default function App() {
               <form onSubmit={handleSaveCategory} className="space-y-4">
                 <div><label className="text-sm font-bold text-slate-700 mb-1 block">分類名稱</label><input className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-teal-500 outline-none" value={catForm.name} onChange={e=>setCatForm({...catForm, name:e.target.value})} required/></div>
                 <button type="submit" className="w-full bg-teal-600 text-white py-3 rounded-xl font-bold hover:bg-teal-700 transition-colors">儲存</button>
-              </form>
-            )}
-
-            {modalType === 'borrow' && (
-              <form onSubmit={handleBorrow} className="space-y-4">
-                <div className="bg-indigo-50 p-4 rounded-xl text-sm text-indigo-800 font-bold mb-4 flex items-center justify-between border border-indigo-100"><span className="flex items-center gap-2"><Box className="w-4 h-4"/> {borrowForm.equipmentName}</span><span className="bg-white px-2 py-0.5 rounded text-indigo-600 text-xs">庫存: {borrowForm.maxQuantity}</span></div>
-                <div><label className="text-sm font-bold text-slate-700 mb-1 block">借用數量</label><input type="number" min="1" max={borrowForm.maxQuantity} className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.quantity} onChange={e=>setBorrowForm({...borrowForm, quantity:e.target.value})} required /></div>
-                <div><label className="text-sm font-bold text-slate-700 mb-1 block">借用日期</label><input type="date" className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.date} onChange={e=>setBorrowForm({...borrowForm, date:e.target.value})} required/></div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="text-sm font-bold text-slate-700 mb-1 block">借用人姓名</label><input className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.borrower} onChange={e=>setBorrowForm({...borrowForm, borrower:e.target.value})} required/></div>
-                  <div><label className="text-sm font-bold text-slate-700 mb-1 block">聯絡電話</label><input type="tel" className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.phone} onChange={e=>setBorrowForm({...borrowForm, phone:e.target.value})} required/></div>
-                </div>
-                <div><label className="text-sm font-bold text-slate-700 mb-1 block">借用用途</label><textarea className="w-full border border-slate-300 rounded-lg p-2.5 h-20 resize-none focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.purpose} onChange={e=>setBorrowForm({...borrowForm, purpose:e.target.value})} required/></div>
-                <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">確認借出</button>
               </form>
             )}
            </div>
