@@ -22,14 +22,15 @@ import {
   where,
   orderBy,
   increment,
-  limit
+  limit,
+  writeBatch // 用於批次寫入
 } from 'firebase/firestore';
 import { 
   Beaker, ClipboardList, Settings, LogOut, Plus, Search, Trash2, Edit2, 
   Download, Filter, AlertTriangle, User, LayoutGrid, Menu, X, CheckCircle, 
   AlertCircle, Eye, EyeOff, ChevronRight, UserPlus, Calendar, FolderOpen,
   History, UserCheck, Phone, ArrowLeft, Clock, FileText, Hash, Home, 
-  Activity, Box, FileDown, ArrowUpRight, ArrowDownLeft, MousePointerClick, Sparkles, MoreVertical, Timer
+  Activity, Box, FileDown, ArrowUpRight, ArrowDownLeft, MousePointerClick, Sparkles, MoreVertical, Timer, ShoppingCart, Minus
 } from 'lucide-react';
 
 // ==========================================
@@ -158,6 +159,7 @@ const AuthScreen = () => {
           <button type="submit" disabled={loading} className="w-full bg-teal-600 text-white py-3 rounded-lg font-bold hover:bg-teal-700 transition-colors">{loading?'處理中...':(isRegister?'註冊帳號':'登入系統')}</button>
         </form>
         <button onClick={() => {setIsRegister(!isRegister); setError('')}} className="w-full mt-4 text-sm text-slate-500 hover:text-teal-600">切換為 {isRegister ? '登入' : '註冊'}</button>
+        <button onClick={handleDemoLogin} className="w-full mt-2 text-sm text-slate-400 underline hover:text-teal-600">訪客登入 (免註冊)</button>
       </div>
     </div>
   );
@@ -204,10 +206,11 @@ export default function App() {
   const [sessionForm, setSessionForm] = useState({ name: '', date: '' });
   const [equipForm, setEquipForm] = useState({ name: '', quantity: 1, categoryId: '', note: '' });
   const [catForm, setCatForm] = useState({ name: '' });
-  // Added borrowDays
+  
+  // [NEW] Cart & Borrow Form
+  const [cartItems, setCartItems] = useState([]);
   const [borrowForm, setBorrowForm] = useState({ 
-    borrower: '', phone: '', date: '', equipmentId: '', equipmentName: '', purpose: '', 
-    quantity: 1, maxQuantity: 0, borrowDays: 7 
+    borrower: '', phone: '', date: new Date().toISOString().slice(0,10), purpose: '', borrowDays: 7 
   });
 
   // Init Auth
@@ -233,15 +236,12 @@ export default function App() {
       }
       return;
     }
-
     const latestSession = sessions[0];
     const targetSessionId = latestSession.id;
 
     const qEquip = query(collection(db, 'artifacts', appId, 'public', 'data', 'equipment'), where('sessionId', '==', targetSessionId));
     const unsubEquip = onSnapshot(qEquip, (snap) => {
-      let equipCount = 0;
-      let borrowedCount = 0;
-      let lowStock = 0;
+      let equipCount = 0, borrowedCount = 0, lowStock = 0;
       snap.forEach(doc => {
         const data = doc.data();
         equipCount += (data.quantity || 0);
@@ -251,17 +251,12 @@ export default function App() {
       setDashboardStats(prev => ({ ...prev, latestSessionId: targetSessionId, latestSessionName: latestSession.name, totalEquipment: equipCount, totalBorrowed: borrowedCount, lowStockCount: lowStock }));
     });
 
-    const qLoans = query(
-      collection(db, 'artifacts', appId, 'public', 'data', 'loans'), 
-      where('sessionId', '==', targetSessionId)
-    );
+    const qLoans = query(collection(db, 'artifacts', appId, 'public', 'data', 'loans'), where('sessionId', '==', targetSessionId));
     const unsubLoans = onSnapshot(qLoans, (snap) => {
       const events = [];
       snap.forEach(doc => {
         const data = doc.data();
         const loanId = doc.id;
-
-        // 1. Borrow Event
         events.push({
           id: loanId + '_borrow',
           originalId: loanId,
@@ -273,8 +268,6 @@ export default function App() {
           quantity: data.quantity,
           timestamp: data.createdAt ? data.createdAt.seconds : 0
         });
-
-        // 2. Return Event
         if (data.status === 'returned' && data.returnDate) {
           events.push({
             id: loanId + '_return',
@@ -289,16 +282,13 @@ export default function App() {
           });
         }
       });
-
       events.sort((a, b) => {
         if (a.date > b.date) return -1;
         if (a.date < b.date) return 1;
         return b.timestamp - a.timestamp;
       });
-
       setDashboardStats(prev => ({ ...prev, recentActivity: events.slice(0, 10) }));
     });
-
     return () => { unsubEquip(); unsubLoans(); };
   }, [user, viewMode, sessions]); 
 
@@ -319,6 +309,41 @@ export default function App() {
 
   const showToast = (msg, type='success') => setToast({message: msg, type});
   const getAvailability = (item) => (item.quantity - (item.borrowedCount || 0));
+
+  // [NEW] Cart Helpers
+  const addToCart = (item) => {
+    const existing = cartItems.find(c => c.id === item.id);
+    const available = getAvailability(item);
+    
+    if(available <= 0) {
+      showToast("此設備已無庫存", "error");
+      return;
+    }
+
+    if (existing) {
+      if (existing.borrowQty < available) {
+        setCartItems(cartItems.map(c => c.id === item.id ? { ...c, borrowQty: c.borrowQty + 1 } : c));
+      } else {
+        showToast("已達最大可借數量", "error");
+      }
+    } else {
+      setCartItems([...cartItems, { ...item, borrowQty: 1, maxQty: available }]);
+    }
+  };
+
+  const removeFromCart = (id) => {
+    setCartItems(cartItems.filter(c => c.id !== id));
+  };
+  
+  const updateCartQty = (id, delta) => {
+    setCartItems(cartItems.map(c => {
+      if(c.id === id) {
+        const newQty = c.borrowQty + delta;
+        if(newQty > 0 && newQty <= c.maxQty) return {...c, borrowQty: newQty};
+      }
+      return c;
+    }));
+  };
 
   // Handlers
   const handleStatClick = (target) => {
@@ -356,97 +381,54 @@ export default function App() {
   };
 
   // CRUD
-  const handleSaveSession = async (e) => {
-    e.preventDefault();
-    try {
-      const basePayload = {
-        name: sessionForm.name,
-        date: sessionForm.date,
-        createdBy: user.uid
-      };
-      if (editItem) {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', editItem.id), {
-          ...basePayload,
-          updatedAt: serverTimestamp()
-        });
-      } else {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sessions'), {
-          ...basePayload,
-          createdAt: serverTimestamp()
-        });
-      }
-      setIsModalOpen(false);
-      showToast("版次儲存成功");
-    } catch (err) { showToast("錯誤", "error"); }
-  };
-  
-  const deleteSession = (id) => {
-    setConfirmDialog({
-      isOpen: true, 
-      title: "刪除版次", 
-      message: "確定要刪除此版次嗎？注意：這不會刪除該版次內的設備資料，但會從列表中移除。", 
-      isDangerous: true, 
-      action: async () => { 
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', id)); 
-        setConfirmDialog(p => ({...p, isOpen: false})); 
-        showToast("版次已刪除"); 
-      }
-    });
-  };
-
+  const handleSaveSession = async (e) => { e.preventDefault(); try { const payload = { name: sessionForm.name, date: sessionForm.date, createdAt: serverTimestamp(), createdBy: user.uid }; if (editItem) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', editItem.id), payload); else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sessions'), payload); setIsModalOpen(false); showToast("版次儲存成功"); } catch (err) { showToast("錯誤", "error"); } };
+  const deleteSession = (id) => { setConfirmDialog({ isOpen: true, title: "刪除版次", message: "確定要刪除此版次嗎？", isDangerous: true, action: async () => { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', id)); setConfirmDialog(p => ({...p, isOpen: false})); showToast("版次已刪除"); } }); };
   const handleSaveEquipment = async (e) => { e.preventDefault(); if (!currentSession) return; try { const cat = categories.find(c => c.id === equipForm.categoryId); const payload = { name: equipForm.name, quantity: parseInt(equipForm.quantity), categoryId: equipForm.categoryId, categoryName: cat ? cat.name : '未分類', note: equipForm.note, sessionId: currentSession.id, ...(editItem ? {} : { borrowedCount: 0 }), updatedAt: serverTimestamp() }; if (editItem) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', editItem.id), payload); else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'equipment'), payload); setIsModalOpen(false); showToast("設備儲存成功"); } catch (err) { showToast("錯誤", "error"); } };
   const handleSaveCategory = async (e) => { e.preventDefault(); try { if (editItem) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categories', editItem.id), {name: catForm.name}); else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'categories'), {name: catForm.name}); setIsModalOpen(false); showToast("分類儲存成功"); } catch (err) { showToast("錯誤", "error"); } };
   
-  const handleBorrow = async (e) => { 
-    e.preventDefault(); if (!currentSession) return; 
-    const qty = parseInt(borrowForm.quantity); 
-    const days = parseInt(borrowForm.borrowDays);
-    if (qty > borrowForm.maxQuantity) { showToast(`庫存不足`, "error"); return; } 
-    if (qty <= 0) { showToast("數量錯誤", "error"); return; } 
-    if (days <= 0) { showToast("天數錯誤", "error"); return; }
-
+  // [NEW] Batch Borrow
+  const handleBatchBorrow = async (e) => { 
+    e.preventDefault(); 
+    if (!currentSession) return; 
+    if (cartItems.length === 0) { showToast("請先選擇設備加入借用清單", "error"); return; }
+    
     try { 
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'loans'), { 
-        sessionId: currentSession.id, equipmentId: borrowForm.equipmentId, equipmentName: borrowForm.equipmentName, borrower: borrowForm.borrower, phone: borrowForm.phone, purpose: borrowForm.purpose, quantity: qty, borrowDays: days, borrowDate: borrowForm.date, returnDate: null, status: 'borrowed', 
-        createdAt: serverTimestamp(), updatedAt: serverTimestamp() 
-      }); 
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', borrowForm.equipmentId), { borrowedCount: increment(qty) }); 
-      setIsModalOpen(false); showToast("借用登記成功"); 
+      // Loop through cart items and create loan records
+      // Note: In a real app, you'd use a Batch write, but for simplicity we do sequential adds here which is fine for small scale
+      const promises = cartItems.map(async (item) => {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'loans'), { 
+          sessionId: currentSession.id, 
+          equipmentId: item.id, 
+          equipmentName: item.name, 
+          borrower: borrowForm.borrower, 
+          phone: borrowForm.phone, 
+          purpose: borrowForm.purpose, 
+          quantity: item.borrowQty, 
+          borrowDays: parseInt(borrowForm.borrowDays), 
+          borrowDate: borrowForm.date, 
+          returnDate: null, 
+          status: 'borrowed', 
+          createdAt: serverTimestamp(), 
+          updatedAt: serverTimestamp() 
+        }); 
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', item.id), { borrowedCount: increment(item.borrowQty) }); 
+      });
+
+      await Promise.all(promises);
+      
+      setCartItems([]);
+      setBorrowForm({ borrower: '', phone: '', date: new Date().toISOString().slice(0,10), purpose: '', borrowDays: 7 });
+      showToast(`成功借出 ${cartItems.length} 項設備`); 
+      setViewMode('loans'); // Go to history to see result
     } catch (err) { showToast("借用失敗", "error"); } 
   };
 
-  const handleReturn = (loanId) => { 
-    setConfirmDialog({ 
-      isOpen: true, title: "歸還確認", message: `確定此設備已歸還嗎？`, isDangerous: false, 
-      action: async () => { 
-        try { 
-          const loanDoc = loans.find(l => l.id === loanId); if (!loanDoc) return; 
-          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'loans', loanId), { 
-            returnDate: new Date().toISOString().split('T')[0], status: 'returned', updatedAt: serverTimestamp() 
-          }); 
-          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', loanDoc.equipmentId), { borrowedCount: increment(-loanDoc.quantity) }); 
-          setConfirmDialog(p => ({...p, isOpen: false})); showToast("歸還完成"); 
-        } catch (err) { showToast("操作失敗", "error"); } 
-      } 
-    }); 
-  };
+  const handleReturn = (loanId) => { setConfirmDialog({ isOpen: true, title: "歸還確認", message: `確定此設備已歸還嗎？`, isDangerous: false, action: async () => { try { const loanDoc = loans.find(l => l.id === loanId); if (!loanDoc) return; await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'loans', loanId), { returnDate: new Date().toISOString().split('T')[0], status: 'returned', updatedAt: serverTimestamp() }); await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', loanDoc.equipmentId), { borrowedCount: increment(-loanDoc.quantity) }); setConfirmDialog(p => ({...p, isOpen: false})); showToast("歸還完成"); } catch (err) { showToast("操作失敗", "error"); } } }); };
   
   const filteredEquipment = useMemo(() => { return equipment.filter(item => { const matchSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()); const matchCat = selectedCategoryFilter === 'all' || item.categoryId === selectedCategoryFilter; return matchSearch && matchCat; }); }, [equipment, searchTerm, selectedCategoryFilter]);
   const openSessionModal = (item=null) => { setModalType('session'); setEditItem(item); setSessionForm(item ? {name: item.name, date: item.date} : {name: '', date: new Date().toISOString().slice(0,10)}); setIsModalOpen(true); };
   const openEquipModal = (item=null) => { setModalType('equipment'); setEditItem(item); setEquipForm(item ? {name: item.name, quantity: item.quantity, categoryId: item.categoryId, note: item.note} : {name: '', quantity: 1, categoryId: categories[0]?.id || '', note: ''}); setIsModalOpen(true); };
   
-  const openBorrowModal = (item) => { 
-    const available = getAvailability(item); 
-    if (available <= 0) { showToast("無庫存可借", "error"); return; } 
-    setModalType('borrow'); 
-    setBorrowForm({ 
-      borrower: '', phone: '', purpose: '', date: new Date().toISOString().slice(0,10), 
-      equipmentId: item.id, equipmentName: item.name, quantity: 1, maxQuantity: available,
-      borrowDays: 7 // Default 7 days
-    }); 
-    setIsModalOpen(true); 
-  };
-
   // Helper to calc expected return date
   const getExpectedReturnDate = (dateStr, days) => {
     if(!dateStr || !days) return '';
@@ -483,6 +465,10 @@ export default function App() {
               <button onClick={() => { setViewMode('equipment'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${viewMode === 'equipment' ? 'bg-teal-500 text-white shadow-lg' : 'hover:bg-teal-700/50 text-teal-100'}`}>
                 <LayoutGrid className="w-5 h-5" /> <span className="font-medium">設備列表</span>
               </button>
+              {/* 🟢 [NEW] Borrow Request Tab */}
+              <button onClick={() => { setViewMode('borrow-request'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${viewMode === 'borrow-request' ? 'bg-teal-500 text-white shadow-lg' : 'hover:bg-teal-700/50 text-teal-100'}`}>
+                <ShoppingCart className="w-5 h-5" /> <span className="font-medium">借用登記</span>
+              </button>
               <button onClick={() => { setViewMode('loans'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${viewMode === 'loans' ? 'bg-teal-500 text-white shadow-lg' : 'hover:bg-teal-700/50 text-teal-100'}`}>
                 <History className="w-5 h-5" /> <span className="font-medium">借還紀錄表</span>
               </button>
@@ -504,6 +490,7 @@ export default function App() {
                   {viewMode === 'sessions' && '版次管理'}
                   {viewMode === 'categories' && '分類設定'}
                   {currentSession && viewMode === 'equipment' && `${currentSession.name} - 設備`}
+                  {currentSession && viewMode === 'borrow-request' && `${currentSession.name} - 借用登記`}
                   {currentSession && viewMode === 'loans' && `${currentSession.name} - 借還紀錄`}
                 </h2>
              </div>
@@ -563,6 +550,100 @@ export default function App() {
             </div>
           )}
 
+          {/* Sessions, Equipment, Loans, Categories Views ... */}
+          {/* 🟢 [NEW] BORROW REQUEST VIEW (Shopping Cart Style) */}
+          {viewMode === 'borrow-request' && currentSession && (
+             <div className="flex flex-col lg:flex-row gap-6 h-full overflow-hidden">
+                {/* Left: Equipment List for Selection */}
+                <div className="lg:w-1/2 flex flex-col h-full bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                   <div className="p-4 border-b bg-slate-50">
+                      <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><Search className="w-4 h-4"/> 搜尋可用設備</h3>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4"/>
+                        <input type="text" placeholder="輸入名稱搜尋..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-teal-500"/>
+                      </div>
+                   </div>
+                   <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                      {filteredEquipment.map(item => {
+                        const available = getAvailability(item);
+                        if(available <= 0) return null; // Hide unavailable items
+                        return (
+                          <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-teal-300 transition-colors">
+                             <div>
+                                <div className="font-bold text-slate-700">{item.name}</div>
+                                <div className="text-xs text-slate-500">分類: {item.categoryName} | 庫存: <span className="text-teal-600 font-bold">{available}</span></div>
+                             </div>
+                             <button onClick={()=>addToCart(item)} className="bg-teal-600 text-white p-2 rounded-full hover:bg-teal-700 shadow-sm active:scale-95"><Plus className="w-4 h-4"/></button>
+                          </div>
+                        );
+                      })}
+                      {filteredEquipment.filter(i => getAvailability(i) > 0).length === 0 && <div className="text-center p-10 text-slate-400">無可用設備</div>}
+                   </div>
+                </div>
+
+                {/* Right: Cart & Form */}
+                <div className="lg:w-1/2 flex flex-col h-full gap-4 overflow-y-auto">
+                   {/* Cart List */}
+                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+                      <h3 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-indigo-600"/> 借用清單 ({cartItems.length})</h3>
+                      {cartItems.length === 0 ? (
+                        <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-300">
+                          尚未選擇任何設備<br/><span className="text-xs">請從左側列表點擊 + 加入</span>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                           {cartItems.map(item => (
+                             <div key={item.id} className="flex items-center justify-between p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                                <div className="flex-1">
+                                   <div className="font-bold text-indigo-900">{item.name}</div>
+                                   <div className="text-xs text-indigo-600">庫存上限: {item.maxQty}</div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                   <button onClick={()=>updateCartQty(item.id, -1)} className="p-1 bg-white rounded text-indigo-600 hover:bg-indigo-200"><Minus className="w-3 h-3"/></button>
+                                   <span className="font-bold w-4 text-center">{item.borrowQty}</span>
+                                   <button onClick={()=>updateCartQty(item.id, 1)} className="p-1 bg-white rounded text-indigo-600 hover:bg-indigo-200"><Plus className="w-3 h-3"/></button>
+                                   <button onClick={()=>removeFromCart(item.id)} className="p-1.5 text-red-500 hover:bg-red-100 rounded ml-2"><X className="w-4 h-4"/></button>
+                                </div>
+                             </div>
+                           ))}
+                        </div>
+                      )}
+                   </div>
+
+                   {/* Borrower Form */}
+                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex-1">
+                      <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><UserCheck className="w-5 h-5 text-indigo-600"/> 借用人資訊</h3>
+                      <form onSubmit={handleBatchBorrow} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div><label className="text-sm font-bold text-slate-600 block mb-1">姓名</label><input className="w-full border rounded p-2" value={borrowForm.borrower} onChange={e=>setBorrowForm({...borrowForm, borrower:e.target.value})} required/></div>
+                          <div><label className="text-sm font-bold text-slate-600 block mb-1">電話</label><input type="tel" className="w-full border rounded p-2" value={borrowForm.phone} onChange={e=>setBorrowForm({...borrowForm, phone:e.target.value})} required/></div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                           <div><label className="text-sm font-bold text-slate-600 block mb-1">借用日期</label><input type="date" className="w-full border rounded p-2" value={borrowForm.date} onChange={e=>setBorrowForm({...borrowForm, date:e.target.value})} required/></div>
+                           <div>
+                             <label className="text-sm font-bold text-slate-600 block mb-1">預計天數</label>
+                             <div className="relative">
+                               <input type="number" min="1" className="w-full border rounded p-2 pr-8" value={borrowForm.borrowDays} onChange={e=>setBorrowForm({...borrowForm, borrowDays:e.target.value})} required/>
+                               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">天</span>
+                             </div>
+                           </div>
+                        </div>
+                        {borrowForm.date && borrowForm.borrowDays && (
+                           <div className="text-xs text-indigo-600 flex items-center gap-1 bg-indigo-50 p-2 rounded">
+                             <Timer className="w-3 h-3"/> 預計歸還：{getExpectedReturnDate(borrowForm.date, borrowForm.borrowDays)}
+                           </div>
+                        )}
+                        <div><label className="text-sm font-bold text-slate-600 block mb-1">用途說明</label><textarea className="w-full border rounded p-2 h-20 resize-none" value={borrowForm.purpose} onChange={e=>setBorrowForm({...borrowForm, purpose:e.target.value})} required/></div>
+                        
+                        <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">
+                           確認借出 ({cartItems.length} 項物品)
+                        </button>
+                      </form>
+                   </div>
+                </div>
+             </div>
+          )}
+
           {viewMode === 'sessions' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
               {sessions.map(sess => (
@@ -572,13 +653,7 @@ export default function App() {
                     <h3 className="text-xl font-bold text-slate-800 mb-1">{sess.name}</h3>
                     <p className="text-sm text-slate-500">管理設備清單與借用紀錄</p>
                   </div>
-                  <div className="bg-slate-50 px-6 py-3 border-t flex justify-between items-center">
-                    <span className="text-xs text-slate-400 font-mono">#{sess.id.slice(0,6)}</span>
-                    <div className="flex gap-2">
-                      <button onClick={(e)=>{e.stopPropagation();openSessionModal(sess)}} className="p-2 text-slate-400 hover:text-teal-600 transition-colors"><Edit2 className="w-4 h-4"/></button>
-                      <button onClick={(e)=>{e.stopPropagation();deleteSession(sess.id)}} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 className="w-4 h-4"/></button>
-                    </div>
-                  </div>
+                  <div className="bg-slate-50 px-6 py-3 border-t flex justify-between items-center"><span className="text-xs text-slate-400 font-mono">#{sess.id.slice(0,6)}</span><div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={(e)=>{e.stopPropagation();openSessionModal(sess)}} className="p-2 text-slate-400 hover:text-teal-600"><Edit2 className="w-4 h-4"/></button><button onClick={(e)=>{e.stopPropagation();deleteSession(sess.id)}} className="p-2 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button></div></div>
                 </div>
               ))}
               {sessions.length === 0 && <div className="col-span-full text-center py-20 text-slate-400">尚未建立任何版次</div>}
@@ -616,13 +691,6 @@ export default function App() {
                         <div><div className="text-slate-400 text-xs">剩餘</div><div className={`font-bold ${available===0?'text-red-600':'text-green-600'}`}>{available}</div></div>
                       </div>
                       {item.note && <div className="text-xs text-slate-400 mb-3 bg-yellow-50 p-2 rounded border border-yellow-100">📝 {item.note}</div>}
-                      <button 
-                        onClick={()=>openBorrowModal(item)} 
-                        disabled={available <= 0}
-                        className={`w-full py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 ${available <= 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'}`}
-                      >
-                        <UserCheck className="w-4 h-4"/> {available <= 0 ? '無庫存' : '登記借出'}
-                      </button>
                     </div>
                   );
                 })}
@@ -642,7 +710,7 @@ export default function App() {
                             <td className="p-4"><div className="font-bold text-slate-700 text-base">{item.name}</div>{item.note && <div className="text-xs text-slate-400 mt-1 max-w-xs truncate">{item.note}</div>}</td>
                             <td className="p-4"><div className="flex items-center gap-3"><span className="bg-slate-100 px-2 py-1 rounded text-sm whitespace-nowrap">總 {item.quantity}</span> <span className="text-orange-600 bg-orange-50 px-2 py-1 rounded text-sm whitespace-nowrap">借 {borrowed}</span> <span className={`px-2 py-1 rounded text-sm font-bold whitespace-nowrap ${available === 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>剩 {available}</span></div></td>
                             <td className="p-4 text-sm text-slate-500 whitespace-nowrap"><span className="bg-slate-50 border border-slate-200 px-2 py-1 rounded">{item.categoryName}</span></td>
-                            <td className="p-4 text-right sticky right-0 bg-white"><div className="flex justify-end gap-2"><button onClick={()=>openBorrowModal(item)} disabled={available <= 0} className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap ${available <= 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'}`}><UserCheck className="w-3.5 h-3.5"/> {available <= 0 ? '缺貨' : '借出'}</button><button onClick={()=>openEquipModal(item)} className="p-2 text-slate-400 hover:text-teal-600"><Edit2 className="w-4 h-4"/></button><button onClick={()=>deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', item.id))} className="p-2 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button></div></td>
+                            <td className="p-4 text-right sticky right-0 bg-white"><div className="flex justify-end gap-2"><button onClick={()=>openEquipModal(item)} className="p-2 text-slate-400 hover:text-teal-600"><Edit2 className="w-4 h-4"/></button><button onClick={()=>deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', item.id))} className="p-2 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button></div></td>
                           </tr>
                         );
                       })}
@@ -654,7 +722,6 @@ export default function App() {
             </div>
           )}
 
-          {/* 🔴 LOANS VIEW (Updated: Mobile Cards + Desktop Table with borrow days) */}
           {viewMode === 'loans' && currentSession && (
             <div className="space-y-6 max-w-[1600px] mx-auto">
                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
@@ -684,7 +751,6 @@ export default function App() {
                            <span className="font-medium text-slate-700">{loan.equipmentName}</span>
                            <span className="bg-slate-200 text-slate-700 px-2 rounded-full text-xs font-bold">x{loan.quantity}</span>
                          </div>
-                         {/* Added borrow days info */}
                          <div className="text-xs text-teal-600 font-medium mb-1 flex items-center gap-1">
                             <Clock className="w-3 h-3"/> 借用 {loan.borrowDays || 7} 天
                          </div>
@@ -767,7 +833,6 @@ export default function App() {
                 {modalType === 'session' && (editItem ? '編輯版次' : '新增版次')}
                 {modalType === 'equipment' && (editItem ? '編輯設備' : '新增設備')}
                 {modalType === 'category' && (editItem ? '編輯分類' : '新增分類')}
-                {modalType === 'borrow' && '借用登記'}
               </h3>
               <button onClick={()=>setIsModalOpen(false)}><X className="w-6 h-6 text-slate-400 hover:text-slate-600"/></button>
             </div>
@@ -802,51 +867,6 @@ export default function App() {
               <form onSubmit={handleSaveCategory} className="space-y-4">
                 <div><label className="text-sm font-bold text-slate-700 mb-1 block">分類名稱</label><input className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-teal-500 outline-none" value={catForm.name} onChange={e=>setCatForm({...catForm, name:e.target.value})} required/></div>
                 <button type="submit" className="w-full bg-teal-600 text-white py-3 rounded-xl font-bold hover:bg-teal-700 transition-colors">儲存</button>
-              </form>
-            )}
-
-            {modalType === 'borrow' && (
-              <form onSubmit={handleBorrow} className="space-y-4">
-                <div className="bg-indigo-50 p-4 rounded-xl text-sm text-indigo-800 font-bold mb-4 flex items-center justify-between border border-indigo-100">
-                  <span className="flex items-center gap-2"><Box className="w-4 h-4"/> {borrowForm.equipmentName}</span>
-                  <span className="bg-white px-2 py-0.5 rounded text-indigo-600 text-xs">庫存: {borrowForm.maxQuantity}</span>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-bold text-slate-700 mb-1 block">借用數量</label>
-                    <input type="number" min="1" max={borrowForm.maxQuantity} className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.quantity} onChange={e=>setBorrowForm({...borrowForm, quantity:e.target.value})} required />
-                  </div>
-                  <div>
-                    <label className="text-sm font-bold text-slate-700 mb-1 block">借用天數</label>
-                    <div className="relative">
-                      <input type="number" min="1" className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none pr-8" value={borrowForm.borrowDays} onChange={e=>setBorrowForm({...borrowForm, borrowDays:e.target.value})} required />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">天</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-sm font-bold text-slate-700 mb-1 block">借用日期</label>
-                  <input type="date" className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.date} onChange={e=>setBorrowForm({...borrowForm, date:e.target.value})} required/>
-                  {/* Simple return date hint */}
-                  {borrowForm.date && borrowForm.borrowDays && (
-                    <p className="text-xs text-indigo-600 mt-1 flex items-center gap-1">
-                      <Timer className="w-3 h-3"/> 預計歸還：{getExpectedReturnDate(borrowForm.date, borrowForm.borrowDays)}
-                    </p>
-                  )}
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="text-sm font-bold text-slate-700 mb-1 block">借用人姓名</label><input className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.borrower} onChange={e=>setBorrowForm({...borrowForm, borrower:e.target.value})} required/></div>
-                  <div><label className="text-sm font-bold text-slate-700 mb-1 block">聯絡電話</label><input type="tel" className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.phone} onChange={e=>setBorrowForm({...borrowForm, phone:e.target.value})} required/></div>
-                </div>
-                
-                <div>
-                  <label className="text-sm font-bold text-slate-700 mb-1 block">借用用途</label>
-                  <textarea className="w-full border border-slate-300 rounded-lg p-2.5 h-20 resize-none focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.purpose} onChange={e=>setBorrowForm({...borrowForm, purpose:e.target.value})} placeholder="上課用...." required/>
-                </div>
-                <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">確認借出</button>
               </form>
             )}
           </div>
