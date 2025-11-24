@@ -57,7 +57,7 @@ const YOUR_FIREBASE_CONFIG = {
 const app = initializeApp(YOUR_FIREBASE_CONFIG);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app); // 初始化 Storage
+const storage = getStorage(app); 
 const appId = 'lab-management-system-production';
 
 // --- 元件：自定義確認視窗 ---
@@ -167,7 +167,6 @@ const AuthScreen = () => {
           <button type="submit" disabled={loading} className="w-full bg-teal-600 text-white py-3 rounded-lg font-bold hover:bg-teal-700 transition-colors">{loading?'處理中...':(isRegister?'註冊帳號':'登入系統')}</button>
         </form>
         <button onClick={() => {setIsRegister(!isRegister); setError('')}} className="w-full mt-4 text-sm text-slate-500 hover:text-teal-600">切換為 {isRegister ? '登入' : '註冊'}</button>
-        
       </div>
     </div>
   );
@@ -347,7 +346,6 @@ export default function App() {
     }));
   };
 
-  // Direct input for cart qty
   const handleCartQtyInput = (id, val) => {
       const newQty = parseInt(val);
       setCartItems(cartItems.map(c => {
@@ -377,8 +375,15 @@ export default function App() {
   };
 
   // Handlers
+  // 🔴 [FIX] Handle dashboard navigation logic correctly
   const handleStatClick = (target) => {
+    if (target === 'sessions') {
+      setViewMode('sessions');
+      return;
+    }
+
     if (!dashboardStats.latestSessionId) { showToast("目前無資料", "error"); return; }
+    
     const targetSession = sessions.find(s => s.id === dashboardStats.latestSessionId);
     if (targetSession) {
       setCurrentSession(targetSession);
@@ -611,6 +616,14 @@ export default function App() {
       <ConfirmModal isOpen={confirmDialog.isOpen} title={confirmDialog.title} message={confirmDialog.message} onConfirm={confirmDialog.action} onCancel={()=>setConfirmDialog(p=>({...p, isOpen:false}))} isDangerous={confirmDialog.isDangerous} />
       {toast && <Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)} />}
 
+      {/* 🔴 [NEW] Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-20 md:hidden backdrop-blur-sm transition-opacity"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
       <aside className={`fixed md:relative z-30 w-64 bg-teal-800 text-teal-50 h-screen transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 flex flex-col shadow-2xl`}>
         <div className="p-6 bg-teal-900/40">
@@ -621,13 +634,11 @@ export default function App() {
             <Home className="w-5 h-5" /> <span className="font-medium">首頁概覽</span>
           </button>
           <button onClick={() => { setViewMode('sessions'); setCurrentSession(null); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${viewMode === 'sessions' ? 'bg-teal-600 text-white shadow-lg' : 'hover:bg-teal-700/50'}`}>
-            <FolderOpen className="w-5 h-5" /> <span className="font-medium">版次/清單總覽</span>
+            <FolderOpen className="w-5 h-5" /> <span className="font-medium">版次/清單管理</span>
           </button>
-          
           <button onClick={() => { setViewMode('categories'); setCurrentSession(null); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${viewMode === 'categories' ? 'bg-teal-600 text-white shadow-lg' : 'hover:bg-teal-700/50'}`}>
             <Settings className="w-5 h-5" /> <span className="font-medium">全域分類設定</span>
           </button>
-
           {currentSession && (
             <div className="mt-6 pt-6 border-t border-teal-700/50">
               <p className="px-4 text-xs font-bold text-teal-300 uppercase mb-2">當前版次：{currentSession.name}</p>
@@ -654,27 +665,23 @@ export default function App() {
           <div className="flex items-center gap-4">
              <button onClick={()=>setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2"><Menu/></button>
              <div>
-                {/* 🟡 [FIXED] Header Title with truncate and min-w-0 to prevent overflow */}
-                <div className="min-w-0 flex-1 pr-2">
-                  <h2 className="text-lg md:text-2xl font-bold text-slate-800 truncate max-w-[200px] md:max-w-md">
-                    {viewMode === 'sessions' && '版次管理'}
-                    {viewMode === 'categories' && '分類設定'}
-                    {viewMode === 'dashboard' && '首頁概覽'}
-                    {currentSession && viewMode === 'equipment' && `${currentSession.name} - 設備`}
-                    {currentSession && viewMode === 'borrow-request' && `${currentSession.name} - 借用登記`}
-                    {currentSession && viewMode === 'loans' && `${currentSession.name} - 借還紀錄`}
-                  </h2>
-                  {currentSession && viewMode !== 'dashboard' && viewMode !== 'sessions' && viewMode !== 'categories' && (
-                    <p className="text-xs text-slate-500 flex items-center gap-1 truncate">
-                      <Clock className="w-3 h-3"/> 建立日期: {currentSession.date}
-                    </p>
-                  )}
-                </div>
+                <h2 className="text-2xl font-bold text-slate-800">
+                  {viewMode === 'dashboard' && '首頁概覽'}
+                  {viewMode === 'sessions' && '版次管理'}
+                  {viewMode === 'categories' && '分類設定'}
+                  {currentSession && viewMode === 'equipment' && `${currentSession.name} - 設備`}
+                  {currentSession && viewMode === 'borrow-request' && `${currentSession.name} - 借用登記`}
+                  {currentSession && viewMode === 'loans' && `${currentSession.name} - 借還紀錄`}
+                </h2>
+                {currentSession && (
+                  <p className="text-xs text-slate-500 flex items-center gap-1">
+                    <Clock className="w-3 h-3"/> 建立日期: {currentSession.date}
+                  </p>
+                )}
              </div>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
-            {/* Buttons remain same */}
-            {viewMode === 'equipment' && (
+          <div className="flex gap-2">
+            {viewMode === 'equipment' && currentSession && (
                 <>
                 <button onClick={()=>handleExportCSV()} className="bg-white border border-slate-300 text-slate-700 px-3 py-2 md:px-4 rounded-lg flex items-center gap-2 hover:bg-slate-50 shadow-sm transition-all active:scale-95"><FileDown className="w-4 h-4 text-teal-600"/> <span className="hidden sm:inline">匯出 CSV</span></button>
                 <button onClick={()=>openEquipModal()} className="bg-teal-600 text-white px-3 py-2 md:px-4 rounded-lg flex items-center gap-2 hover:bg-teal-700"><Plus className="w-4 h-4"/> <span className="hidden sm:inline">新增設備</span><span className="inline sm:hidden">新增</span></button>
@@ -688,7 +695,98 @@ export default function App() {
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
           
-          {/* 1. SESSIONS VIEW */}
+          {/* 📊 DASHBOARD VIEW (Interactive) */}
+          {viewMode === 'dashboard' && (
+            <div className="space-y-6 max-w-7xl mx-auto">
+              <div className="flex items-center gap-2 mb-4"><div className="bg-teal-100 text-teal-700 p-2 rounded-lg"><Sparkles className="w-5 h-5"/></div><span className="text-sm font-bold text-slate-500">目前鎖定：<span className="text-teal-700 text-base">{dashboardStats.latestSessionName}</span></span></div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatCard 
+                  title="最新版次設備總數" 
+                  value={dashboardStats.totalEquipment} 
+                  icon={Box} 
+                  colorClass="bg-teal-500" 
+                  onClick={() => handleStatClick('equipment')}
+                />
+                <StatCard 
+                  title="目前外借中" 
+                  value={dashboardStats.totalBorrowed} 
+                  icon={Activity} 
+                  colorClass="bg-orange-500" 
+                  onClick={() => handleStatClick('borrowed')}
+                />
+                <StatCard 
+                  title="低庫存警示" 
+                  value={dashboardStats.lowStockCount} 
+                  subtext="庫存低於 3 件" 
+                  icon={AlertTriangle} 
+                  colorClass="bg-red-500" 
+                  onClick={() => handleStatClick('lowstock')}
+                />
+                <StatCard 
+                  title="管理中版次總數" 
+                  value={sessions.length} 
+                  icon={FolderOpen} 
+                  colorClass="bg-blue-500" 
+                  onClick={() => handleStatClick('sessions')}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col h-[400px]">
+                  <div className="flex items-center justify-between mb-4"><h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><History className="w-5 h-5 text-teal-600"/> {dashboardStats.latestSessionName} - 最新動態</h3></div>
+                  <div className="flex-1 overflow-auto">
+                    <table className="w-full text-left min-w-[500px]">
+                      <thead className="text-slate-400 text-xs uppercase bg-slate-50 sticky top-0 z-10">
+                        <tr>
+                          <th className="p-3">日期</th>
+                          <th className="p-3">動作</th>
+                          <th className="p-3">借用人</th>
+                          <th className="p-3">物品</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50 text-sm">
+                        {dashboardStats.recentActivity.map(item => (
+                          <tr 
+                            key={item.id} 
+                            onClick={() => handleActivityClick(item)}
+                            className="hover:bg-slate-50/80 cursor-pointer transition-colors group"
+                            title="點擊前往該版次檢視詳情"
+                          >
+                            <td className="p-3 text-slate-500">{item.date}</td>
+                            <td className="p-3">
+                              {item.type === 'borrow' 
+                                ? <span className="flex items-center gap-1 text-orange-600 bg-orange-50 px-2 py-0.5 rounded text-xs w-fit font-bold border border-orange-100"><ArrowUpRight className="w-3 h-3"/> 借出</span>
+                                : <span className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded text-xs w-fit font-bold border border-green-100"><ArrowDownLeft className="w-3 h-3"/> 歸還</span>
+                              }
+                            </td>
+                            <td className="p-3 font-medium text-slate-700">{item.borrower}</td>
+                            <td className="p-3 group-hover:text-teal-600 transition-colors">{item.equipmentName} <span className="text-xs bg-slate-100 px-1 rounded text-slate-500">x{item.quantity}</span></td>
+                          </tr>
+                        ))}
+                        {dashboardStats.recentActivity.length === 0 && (
+                          <tr><td colSpan="4" className="p-6 text-center text-slate-400">暫無近期活動</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                
+                {/* Quick Actions */}
+                <div className="bg-gradient-to-br from-teal-600 to-teal-800 rounded-2xl p-6 text-white shadow-lg flex flex-col justify-center relative overflow-hidden">
+                  <h3 className="font-bold text-lg mb-2 relative z-10">最新版次提示</h3>
+                  <p className="text-teal-100 text-sm mb-6 relative z-10">系統目前自動鎖定在日期最新的版次「{dashboardStats.latestSessionName}」。</p>
+                  <button onClick={() => { setViewMode('sessions'); setCurrentSession(null); }} className="w-full bg-white/20 hover:bg-white/30 text-white py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 relative z-10 border border-white/20">
+                    查看所有版次 <ChevronRight className="w-4 h-4"/>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ... (Other views remain the same) ... */}
+          
+          {/* SESSIONS VIEW */}
           {viewMode === 'sessions' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {sessions.map(sess => (
@@ -721,47 +819,7 @@ export default function App() {
             </div>
           )}
 
-          {/* ... [Other Views: Dashboard, Equipment, Loans, etc.] ... */}
-          {/* DASHBOARD */}
-          {viewMode === 'dashboard' && (
-            <div className="space-y-6 max-w-7xl mx-auto">
-              <div className="flex items-center gap-2 mb-4"><div className="bg-teal-100 text-teal-700 p-2 rounded-lg"><Sparkles className="w-5 h-5"/></div><span className="text-sm font-bold text-slate-500">目前鎖定：<span className="text-teal-700 text-base">{dashboardStats.latestSessionName}</span></span></div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard title="最新版次設備總數" value={dashboardStats.totalEquipment} icon={Box} colorClass="bg-teal-500" onClick={() => handleStatClick('equipment')} />
-                <StatCard title="目前外借中" value={dashboardStats.totalBorrowed} icon={Activity} colorClass="bg-orange-500" onClick={() => handleStatClick('borrowed')} />
-                <StatCard title="低庫存警示" value={dashboardStats.lowStockCount} subtext="庫存低於 3 件" icon={AlertTriangle} colorClass="bg-red-500" onClick={() => handleStatClick('lowstock')} />
-                <StatCard title="管理中版次總數" value={sessions.length} icon={FolderOpen} colorClass="bg-blue-500" onClick={() => handleStatClick('sessions')} />
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col h-[400px]">
-                  <div className="flex items-center justify-between mb-4"><h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><History className="w-5 h-5 text-teal-600"/> {dashboardStats.latestSessionName} - 最新動態</h3></div>
-                  <div className="flex-1 overflow-auto">
-                    <table className="w-full text-left min-w-[500px]">
-                      <thead className="text-slate-400 text-xs uppercase bg-slate-50 sticky top-0 z-10"><tr><th className="p-3">日期</th><th className="p-3">動作</th><th className="p-3">借用人</th><th className="p-3">物品</th></tr></thead>
-                      <tbody className="divide-y divide-slate-50 text-sm">
-                        {dashboardStats.recentActivity.map(item => (
-                          <tr key={item.id} onClick={() => handleActivityClick(item)} className="hover:bg-slate-50/80 cursor-pointer transition-colors group">
-                            <td className="p-3 text-slate-500">{item.date}</td>
-                            <td className="p-3">{item.type === 'borrow' ? <span className="flex items-center gap-1 text-orange-600 bg-orange-50 px-2 py-0.5 rounded text-xs w-fit font-bold border border-orange-100"><ArrowUpRight className="w-3 h-3"/> 借出</span> : <span className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded text-xs w-fit font-bold border border-green-100"><ArrowDownLeft className="w-3 h-3"/> 歸還</span>}</td>
-                            <td className="p-3 font-medium text-slate-700">{item.borrower}</td>
-                            <td className="p-3 group-hover:text-teal-600 transition-colors">{item.equipmentName} <span className="text-xs bg-slate-100 px-1 rounded text-slate-500">x{item.quantity}</span></td>
-                          </tr>
-                        ))}
-                        {dashboardStats.recentActivity.length===0 && <tr><td colSpan="4" className="p-6 text-center text-slate-400">本版次暫無近期活動</td></tr>}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                <div className="bg-gradient-to-br from-teal-600 to-teal-800 rounded-2xl p-6 text-white shadow-lg flex flex-col justify-center relative overflow-hidden">
-                  <h3 className="font-bold text-lg mb-2 relative z-10">最新版次提示</h3>
-                  <p className="text-teal-100 text-sm mb-6 relative z-10">系統目前自動鎖定在日期最新的版次「{dashboardStats.latestSessionName}」。儀表板上的數據僅反映此版次的內容。</p>
-                  <button onClick={() => { setViewMode('sessions'); setCurrentSession(null); }} className="w-full bg-white/20 hover:bg-white/30 text-white py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 relative z-10 border border-white/20">查看所有版次 <ChevronRight className="w-4 h-4"/></button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 2. EQUIPMENT VIEW */}
+          {/* EQUIPMENT VIEW */}
           {viewMode === 'equipment' && currentSession && (
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm">
@@ -867,7 +925,13 @@ export default function App() {
                             </div>
                         </td>
                         <td className="p-4 text-sm text-slate-500">{item.categoryName}</td>
-                        <td className="p-4 text-right flex justify-end gap-2"><button onClick={()=>addToCart(item)} className="px-3 py-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded text-sm font-medium flex items-center gap-1"><Plus className="w-3 h-3"/> 加入借用</button><button onClick={()=>openEquipModal(item)} className="p-2 text-slate-400 hover:text-teal-600"><Edit2 className="w-4 h-4"/></button><button onClick={()=>deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', item.id))} className="p-2 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button></td>
+                        <td className="p-4 text-right flex justify-end gap-2">
+                          <button onClick={()=>addToCart(item)} className="px-3 py-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded text-sm font-medium flex items-center gap-1">
+                            <Plus className="w-3 h-3"/> 加入借用
+                          </button>
+                          <button onClick={()=>openEquipModal(item)} className="p-2 text-slate-400 hover:text-teal-600"><Edit2 className="w-4 h-4"/></button>
+                          <button onClick={()=>deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', item.id))} className="p-2 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
+                        </td>
                       </tr>
                     )})}
                     {filteredEquipment.length === 0 && <tr><td colSpan="5" className="p-8 text-center text-slate-400">無資料</td></tr>}
@@ -877,10 +941,10 @@ export default function App() {
             </div>
           )}
 
-          {/* 🟢 [NEW] BORROW REQUEST VIEW (Shopping Cart Style) */}
+          {/* BORROW REQUEST VIEW */}
           {viewMode === 'borrow-request' && currentSession && (
              <div className="flex flex-col lg:flex-row gap-6 h-full overflow-hidden">
-                {/* Left: Equipment List for Selection */}
+                {/* Left: Equipment List */}
                 <div className="flex-1 lg:w-7/12 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden h-[45%] lg:h-full min-h-[300px]">
                    <div className="p-4 border-b bg-slate-50 shrink-0">
                       <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><Search className="w-4 h-4"/> 搜尋可用設備</h3>
@@ -929,7 +993,6 @@ export default function App() {
                                 </div>
                                 <div className="flex items-center gap-1 flex-shrink-0">
                                    <button onClick={()=>updateCartQty(item.id, -1)} className="p-1 bg-white rounded text-indigo-600 hover:bg-indigo-200"><Minus className="w-3 h-3"/></button>
-                                   {/* Input for quantity */}
                                    <input 
                                       type="number" 
                                       className="w-10 text-center border border-indigo-200 rounded text-sm py-0.5 focus:ring-1 focus:ring-indigo-500 outline-none"
@@ -981,7 +1044,7 @@ export default function App() {
              </div>
           )}
 
-          {/* 3. LOAN HISTORY VIEW */}
+          {/* LOANS VIEW */}
           {viewMode === 'loans' && currentSession && (
             <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200 max-w-[1600px] mx-auto flex flex-col max-h-[80vh]">
               <div className="p-4 border-b bg-slate-50 flex justify-between items-center sticky top-0 z-30">
@@ -1023,8 +1086,7 @@ export default function App() {
                         </td>
                         <td className="p-4 font-mono text-slate-500 whitespace-nowrap">{loan.borrowDate}</td>
                         <td className="p-4 font-mono text-slate-500 whitespace-nowrap">{loan.returnDate || '-'}</td>
-                        <td className="p-4 text-right sticky right-0 bg-white (loan.status === 'borrowed' ? 'bg-orange-50/30' : '')">
-                          {/* 🔥 [FIX] 確保按鈕在借用狀態下顯示 */}
+                        <td className="p-4 text-right sticky right-0 bg-white">
                           {loan.status === 'borrowed' && (
                             <button onClick={()=>handleReturn(loan)} className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95 whitespace-nowrap flex items-center gap-1 ml-auto">
                               <CheckCircle className="w-3 h-3"/> 確認歸還
@@ -1040,17 +1102,15 @@ export default function App() {
             </div>
           )}
 
-          {/* 🟡 [UPDATED] CATEGORIES VIEW (Better Layout & Mobile Buttons) */}
+          {/* CATEGORIES VIEW */}
           {viewMode === 'categories' && (
-             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
+             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-7xl mx-auto">
                {categories.map(c => (
                  <div key={c.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-start group hover:border-teal-300 transition-colors min-h-[80px] h-auto">
                    <div className="flex items-start gap-3 overflow-hidden w-full">
                      <div className="w-8 h-8 rounded-full bg-teal-50 flex-shrink-0 flex items-center justify-center text-teal-600 mt-1"><Hash className="w-4 h-4"/></div>
-                     {/* Added break-all and whitespace-normal to fix text clipping */}
                      <span className="font-bold text-slate-700 break-all whitespace-normal leading-snug flex-1 pt-1.5">{c.name}</span>
                    </div>
-                   {/* Always visible on mobile, hover only on desktop */}
                    <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity ml-2">
                       <button onClick={()=>{setModalType('category');setEditItem(c);setCatForm({name:c.name});setIsModalOpen(true)}} className="p-1.5 text-slate-400 hover:text-teal-600 rounded bg-transparent hover:bg-teal-50"><Edit2 className="w-4 h-4"/></button>
                       <button onClick={()=>deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categories', c.id))} className="p-1.5 text-slate-400 hover:text-red-600 rounded bg-transparent hover:bg-red-50"><Trash2 className="w-4 h-4"/></button>
