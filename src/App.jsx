@@ -595,7 +595,7 @@ export default function App() {
                 <h2 className="text-2xl font-bold text-slate-800">
                   {viewMode === 'sessions' && '版次管理'}
                   {viewMode === 'categories' && '分類設定'}
-                  {currentSession && viewMode === 'equipment' && `${currentSession.name} - 設備`}
+                  {currentSession && viewMode === 'equipment' && `${currentSession.name} - 設備清單`}
                   {currentSession && viewMode === 'borrow-request' && `${currentSession.name} - 借用登記`}
                   {currentSession && viewMode === 'loans' && `${currentSession.name} - 借還紀錄`}
                 </h2>
