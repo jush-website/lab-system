@@ -836,8 +836,8 @@ export default function App() {
                         <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <select value={sortOption} onChange={e=>setSortOption(e.target.value)} className="border rounded-lg pl-10 px-4 py-2 outline-none bg-white min-w-[120px]">
                             <option value="name">名稱排序</option>
-                            <option value="quantity_desc">數量 (多→少)</option>
-                            <option value="quantity_asc">數量 (少→多)</option>
+                            <option value="quantity_desc">數量Z-A</option>
+                            <option value="quantity_asc">數量A-Z</option>
                             <option value="created_desc">最新建立</option>
                         </select>
                     </div>
