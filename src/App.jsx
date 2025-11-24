@@ -184,7 +184,7 @@ export default function App() {
   // Dashboard Stats
   const [dashboardStats, setDashboardStats] = useState({
     latestSessionId: null,
-    latestSessionName: '尚無版次',
+    latestSessionName: '無資料',
     totalEquipment: 0,
     totalBorrowed: 0,
     lowStockCount: 0,
@@ -229,18 +229,27 @@ export default function App() {
     return () => { unsubCat(); unsubSess(); };
   }, [user]);
 
-  // Dashboard Logic: Lock to Latest Session
+  // 🔥 Dashboard Logic: Lock to Latest Session (Fix for empty state)
   useEffect(() => {
     if (!user || viewMode !== 'dashboard') return;
     
-    // Handle empty sessions case
+    // Handle case where no sessions exist
     if (sessions.length === 0) {
-        setDashboardStats({ latestSessionId: null, latestSessionName: '尚無版次', totalEquipment: 0, totalBorrowed: 0, lowStockCount: 0, recentActivity: [] });
+        setDashboardStats({ 
+            latestSessionId: null, 
+            latestSessionName: '尚無版次', 
+            totalEquipment: 0, 
+            totalBorrowed: 0, 
+            lowStockCount: 0, 
+            recentActivity: [] 
+        });
         return;
     }
 
-    // sessions is already sorted by date desc from the listener above
+    // Safe access to latest session
     const latestSession = sessions[0];
+    if (!latestSession) return;
+    
     const targetSessionId = latestSession.id;
 
     // 1. Fetch Equipment for stats
@@ -254,15 +263,6 @@ export default function App() {
         if ((data.quantity - (data.borrowedCount || 0)) < 3) lowStock++;
       });
       
-      // 2. Fetch Loans for Activity (Nested here to update together)
-      const qLoans = query(
-        collection(db, 'artifacts', appId, 'public', 'data', 'loans'), 
-        where('sessionId', '==', targetSessionId)
-      );
-      
-      // Using onSnapshot inside onSnapshot is okay but cleaning up requires care. 
-      // For simplicity in this component structure, we'll separate them or just set state.
-      // Let's set the equipment stats part first.
       setDashboardStats(prev => ({ 
           ...prev, 
           latestSessionId: targetSessionId, 
@@ -273,7 +273,7 @@ export default function App() {
       }));
     });
 
-    // 3. Independent Listener for Loans Activity to avoid nesting hell
+    // 2. Fetch Loans for Activity
     const qLoansActivity = query(
         collection(db, 'artifacts', appId, 'public', 'data', 'loans'), 
         where('sessionId', '==', targetSessionId)
@@ -325,9 +325,9 @@ export default function App() {
     });
 
     return () => { unsubEquip(); unsubLoansActivity(); };
-  }, [user, viewMode, sessions]); 
+  }, [user, viewMode, sessions]); // Only re-run if sessions array changes
 
-  // Session Data Loading
+  // Session Data
   useEffect(() => {
     if (!user || !currentSession) return;
     const qEquip = query(collection(db, 'artifacts', appId, 'public', 'data', 'equipment'), where('sessionId', '==', currentSession.id));
@@ -368,6 +368,22 @@ export default function App() {
       }
       return c;
     }));
+  };
+
+  // [NEW] Direct input for cart qty
+  const handleCartQtyInput = (id, val) => {
+      const newQty = parseInt(val);
+      setCartItems(cartItems.map(c => {
+          if(c.id === id) {
+              if(isNaN(newQty) || newQty < 1) return {...c, borrowQty: 1};
+              if(newQty > c.maxQty) {
+                  showToast(`庫存不足 (上限: ${c.maxQty})`, "error");
+                  return {...c, borrowQty: c.maxQty};
+              }
+              return {...c, borrowQty: newQty};
+          }
+          return c;
+      }));
   };
 
   // Handlers
@@ -412,7 +428,6 @@ export default function App() {
   const handleSaveCategory = async (e) => { e.preventDefault(); try { if (editItem) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categories', editItem.id), {name: catForm.name}); else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'categories'), {name: catForm.name}); setIsModalOpen(false); showToast("分類儲存成功"); } catch (err) { showToast("錯誤", "error"); } };
   const handleDeleteCategory = (id) => { setConfirmDialog({ isOpen: true, title: "刪除分類", message: "確定要刪除此分類嗎？", isDangerous: true, action: async () => { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categories', id)); setConfirmDialog(p => ({...p, isOpen: false})); showToast("分類已刪除"); } }); };
 
-  // Batch Borrow
   const handleBatchBorrow = async (e) => { 
     e.preventDefault(); if (!currentSession) return; 
     if (cartItems.length === 0) { showToast("請先選擇設備加入借用清單", "error"); return; }
@@ -467,9 +482,10 @@ export default function App() {
       <ConfirmModal isOpen={confirmDialog.isOpen} title={confirmDialog.title} message={confirmDialog.message} onConfirm={confirmDialog.action} onCancel={()=>setConfirmDialog(p=>({...p, isOpen:false}))} isDangerous={confirmDialog.isDangerous} />
       {toast && <Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)} />}
 
+      {/* Sidebar */}
       <aside className={`fixed md:relative z-30 w-64 bg-teal-800 text-teal-50 h-screen transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 flex flex-col shadow-2xl`}>
         <div className="p-6 bg-teal-900/40">
-          <h1 className="text-xl font-bold flex items-center "><Beaker/> 實驗室設備管理系統</h1>
+          <h1 className="text-xl font-bold flex items-center gap-2"><Beaker/> 實驗室設備管理系統</h1>
         </div>
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           <button onClick={() => { setViewMode('dashboard'); setCurrentSession(null); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${viewMode === 'dashboard' ? 'bg-teal-600 text-white shadow-lg' : 'hover:bg-teal-700/50'}`}>
@@ -501,6 +517,7 @@ export default function App() {
         </div>
       </aside>
 
+      {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
         <header className="bg-white shadow-sm p-4 flex items-center justify-between z-20">
           <div className="flex items-center gap-4">
@@ -515,7 +532,9 @@ export default function App() {
                   {currentSession && viewMode === 'loans' && `${currentSession.name} - 借還紀錄`}
                 </h2>
                 {currentSession && viewMode !== 'dashboard' && viewMode !== 'sessions' && viewMode !== 'categories' && (
-                  <p className="text-xs text-slate-500 flex items-center gap-1"><Clock className="w-3 h-3"/> 建立日期: {currentSession.date}</p>
+                  <p className="text-xs text-slate-500 flex items-center gap-1">
+                    <Clock className="w-3 h-3"/> 建立日期: {currentSession.date}
+                  </p>
                 )}
              </div>
           </div>
@@ -526,6 +545,7 @@ export default function App() {
           </div>
         </header>
 
+        {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
           
           {/* DASHBOARD */}
@@ -606,7 +626,8 @@ export default function App() {
               {/* Mobile Card View */}
               <div className="block md:hidden space-y-4">
                 {filteredEquipment.map(item => {
-                  const borrowed = item.borrowedCount || 0; const available = item.quantity - borrowed;
+                  const borrowed = item.borrowedCount || 0; 
+                  const available = item.quantity - borrowed;
                   return (
                     <div key={item.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
                       <div className="flex justify-between items-start mb-3">
@@ -632,7 +653,8 @@ export default function App() {
                   <thead className="bg-slate-50 border-b"><tr><th className="p-4 font-semibold text-slate-600">設備名稱</th><th className="p-4 font-semibold text-slate-600">庫存狀態</th><th className="p-4 font-semibold text-slate-600">分類</th><th className="p-4 font-semibold text-slate-600 text-right">操作</th></tr></thead>
                   <tbody className="divide-y">
                     {filteredEquipment.map(item => {
-                        const borrowed = item.borrowedCount || 0; const available = item.quantity - borrowed;
+                        const borrowed = item.borrowedCount || 0;
+                        const available = item.quantity - borrowed;
                         return (
                       <tr key={item.id} className="hover:bg-teal-50/30">
                         <td className="p-4 font-medium">{item.name} <span className="text-xs text-slate-400 block">{item.note}</span></td>
@@ -648,15 +670,16 @@ export default function App() {
             </div>
           )}
 
-          {/* CART VIEW */}
+          {/* 🟢 [NEW] BORROW REQUEST VIEW (Shopping Cart Style) */}
           {viewMode === 'borrow-request' && currentSession && (
              <div className="flex flex-col lg:flex-row gap-6 h-full overflow-hidden">
-                <div className="lg:w-1/2 flex flex-col h-full bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                   <div className="p-4 border-b bg-slate-50">
+                {/* Left: Equipment List for Selection */}
+                <div className="flex-1 lg:w-7/12 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden h-[45%] lg:h-full min-h-[300px]">
+                   <div className="p-4 border-b bg-slate-50 shrink-0">
                       <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><Search className="w-4 h-4"/> 搜尋可用設備</h3>
                       <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4"/><input type="text" placeholder="輸入名稱搜尋..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-teal-500"/></div>
                    </div>
-                   <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                   <div className="flex-1 overflow-y-auto p-2 space-y-2 max-h-[300px] md:max-h-full">
                       {filteredEquipment.map(item => {
                         const available = getAvailability(item);
                         if(available <= 0) return null; 
@@ -670,41 +693,79 @@ export default function App() {
                       {filteredEquipment.filter(i => getAvailability(i) > 0).length === 0 && <div className="text-center p-10 text-slate-400">無可用設備</div>}
                    </div>
                 </div>
-                <div className="lg:w-1/2 flex flex-col h-full gap-4 overflow-y-auto">
-                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+
+                {/* Right: Cart & Form */}
+                <div className="flex-1 lg:w-5/12 flex flex-col gap-4 overflow-y-auto h-[55%] lg:h-full">
+                   {/* Cart List */}
+                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 shrink-0">
                       <h3 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-indigo-600"/> 借用清單 ({cartItems.length})</h3>
-                      {cartItems.length === 0 ? (<div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-300">尚未選擇任何設備<br/><span className="text-xs">請從左側列表點擊 + 加入</span></div>) : (
-                        <div className="space-y-2">
+                      {cartItems.length === 0 ? (
+                        <div className="text-center py-4 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-300 text-sm">
+                          尚未選擇任何設備<br/>請從列表點擊 + 加入
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
                            {cartItems.map(item => (
-                             <div key={item.id} className="flex items-center justify-between p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-                                <div className="flex-1"><div className="font-bold text-indigo-900">{item.name}</div><div className="text-xs text-indigo-600">庫存上限: {item.maxQty}</div></div>
-                                <div className="flex items-center gap-3"><button onClick={()=>updateCartQty(item.id, -1)} className="p-1 bg-white rounded text-indigo-600 hover:bg-indigo-200"><Minus className="w-3 h-3"/></button><span className="font-bold w-4 text-center">{item.borrowQty}</span><button onClick={()=>updateCartQty(item.id, 1)} className="p-1 bg-white rounded text-indigo-600 hover:bg-indigo-200"><Plus className="w-3 h-3"/></button><button onClick={()=>removeFromCart(item.id)} className="p-1.5 text-red-500 hover:bg-red-100 rounded ml-2"><X className="w-4 h-4"/></button></div>
+                             <div key={item.id} className="flex items-center justify-between p-2 bg-indigo-50 rounded-lg border border-indigo-100">
+                                <div className="flex-1 min-w-0 pr-2">
+                                   <div className="font-bold text-indigo-900 truncate">{item.name}</div>
+                                   <div className="text-xs text-indigo-600">上限: {item.maxQty}</div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                   <button onClick={()=>updateCartQty(item.id, -1)} className="p-1 bg-white rounded text-indigo-600 hover:bg-indigo-200"><Minus className="w-3 h-3"/></button>
+                                   {/* Input for quantity */}
+                                   <input 
+                                      type="number" 
+                                      className="w-10 text-center border border-indigo-200 rounded text-sm py-0.5 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                      value={item.borrowQty}
+                                      onChange={(e) => handleCartQtyInput(item.id, e.target.value)}
+                                      min="1"
+                                      max={item.maxQty}
+                                   />
+                                   <button onClick={()=>updateCartQty(item.id, 1)} className="p-1 bg-white rounded text-indigo-600 hover:bg-indigo-200"><Plus className="w-3 h-3"/></button>
+                                   <button onClick={()=>removeFromCart(item.id)} className="p-1 text-red-500 hover:bg-red-100 rounded ml-1"><X className="w-4 h-4"/></button>
+                                </div>
                              </div>
                            ))}
                         </div>
                       )}
                    </div>
-                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex-1">
+
+                   {/* Borrower Form */}
+                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex-1 min-h-0 overflow-y-auto">
                       <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><UserCheck className="w-5 h-5 text-indigo-600"/> 借用人資訊</h3>
-                      <form onSubmit={handleBatchBorrow} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div><label className="text-sm font-bold text-slate-600 block mb-1">姓名</label><input className="w-full border rounded p-2" value={borrowForm.borrower} onChange={e=>setBorrowForm({...borrowForm, borrower:e.target.value})} required/></div>
-                          <div><label className="text-sm font-bold text-slate-600 block mb-1">電話</label><input type="tel" className="w-full border rounded p-2" value={borrowForm.phone} onChange={e=>setBorrowForm({...borrowForm, phone:e.target.value})} required/></div>
+                      <form onSubmit={handleBatchBorrow} className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div><label className="text-xs font-bold text-slate-600 block mb-1">姓名</label><input className="w-full border rounded p-2 text-sm" value={borrowForm.borrower} onChange={e=>setBorrowForm({...borrowForm, borrower:e.target.value})} required/></div>
+                          <div><label className="text-xs font-bold text-slate-600 block mb-1">電話</label><input type="tel" className="w-full border rounded p-2 text-sm" value={borrowForm.phone} onChange={e=>setBorrowForm({...borrowForm, phone:e.target.value})} required/></div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                           <div><label className="text-sm font-bold text-slate-600 block mb-1">借用日期</label><input type="date" className="w-full border rounded p-2" value={borrowForm.date} onChange={e=>setBorrowForm({...borrowForm, date:e.target.value})} required/></div>
-                           <div><label className="text-sm font-bold text-slate-600 block mb-1">預計天數</label><div className="relative"><input type="number" min="1" className="w-full border rounded p-2 pr-8" value={borrowForm.borrowDays} onChange={e=>setBorrowForm({...borrowForm, borrowDays:e.target.value})} required/><span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">天</span></div></div>
+                        <div className="grid grid-cols-2 gap-3">
+                           <div><label className="text-xs font-bold text-slate-600 block mb-1">借用日期</label><input type="date" className="w-full border rounded p-2 text-sm" value={borrowForm.date} onChange={e=>setBorrowForm({...borrowForm, date:e.target.value})} required/></div>
+                           <div>
+                             <label className="text-xs font-bold text-slate-600 block mb-1">預計天數</label>
+                             <div className="relative">
+                               <input type="number" min="1" className="w-full border rounded p-2 pr-8 text-sm" value={borrowForm.borrowDays} onChange={e=>setBorrowForm({...borrowForm, borrowDays:e.target.value})} required/>
+                               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">天</span>
+                             </div>
+                           </div>
                         </div>
-                        {borrowForm.date && borrowForm.borrowDays && (<div className="text-xs text-indigo-600 flex items-center gap-1 bg-indigo-50 p-2 rounded"><Timer className="w-3 h-3"/> 預計歸還：{getExpectedReturnDate(borrowForm.date, borrowForm.borrowDays)}</div>)}
-                        <div><label className="text-sm font-bold text-slate-600 block mb-1">用途說明</label><textarea className="w-full border rounded p-2 h-20 resize-none" value={borrowForm.purpose} onChange={e=>setBorrowForm({...borrowForm, purpose:e.target.value})} required/></div>
-                        <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">確認借出 ({cartItems.length} 項物品)</button>
+                        {borrowForm.date && borrowForm.borrowDays && (
+                           <div className="text-xs text-indigo-600 flex items-center gap-1 bg-indigo-50 p-2 rounded">
+                             <Timer className="w-3 h-3"/> 預計歸還：{getExpectedReturnDate(borrowForm.date, borrowForm.borrowDays)}
+                           </div>
+                        )}
+                        <div><label className="text-xs font-bold text-slate-600 block mb-1">用途說明</label><textarea className="w-full border rounded p-2 h-16 resize-none text-sm" value={borrowForm.purpose} onChange={e=>setBorrowForm({...borrowForm, purpose:e.target.value})} required/></div>
+                        
+                        <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 mt-2">
+                           確認借出 ({cartItems.length} 項物品)
+                        </button>
                       </form>
                    </div>
                 </div>
              </div>
           )}
 
-          {/* LOAN HISTORY */}
+          {/* 3. LOAN HISTORY VIEW */}
           {viewMode === 'loans' && currentSession && (
             <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
               <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
@@ -727,14 +788,28 @@ export default function App() {
                 <tbody className="divide-y">
                   {loans.map(loan => (
                     <tr key={loan.id} className={loan.status === 'borrowed' ? 'bg-orange-50/50' : ''}>
-                      <td className="p-4">{loan.status === 'borrowed' ? <span className="text-orange-600 bg-orange-100 px-2 py-1 rounded text-xs font-bold">借用中</span> : <span className="text-green-600 bg-green-100 px-2 py-1 rounded text-xs font-bold">已歸還</span>}</td>
-                      <td className="p-4"><div className="font-medium">{loan.borrower}</div><div className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3"/> {loan.phone}</div></td>
+                      <td className="p-4">
+                        {loan.status === 'borrowed' 
+                          ? <span className="text-orange-600 bg-orange-100 px-2 py-1 rounded text-xs font-bold">借用中</span>
+                          : <span className="text-green-600 bg-green-100 px-2 py-1 rounded text-xs font-bold">已歸還</span>
+                        }
+                      </td>
+                      <td className="p-4">
+                        <div className="font-medium">{loan.borrower}</div>
+                        <div className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3"/> {loan.phone}</div>
+                      </td>
                       <td className="p-4 font-medium">{loan.equipmentName}</td>
                       <td className="p-4 text-slate-600">{loan.purpose || '-'}</td>
                       <td className="p-4 text-slate-600">{loan.borrowDays || 7}</td>
                       <td className="p-4">{loan.borrowDate}</td>
                       <td className="p-4">{loan.returnDate || '-'}</td>
-                      <td className="p-4 text-right">{loan.status === 'borrowed' && (<button onClick={()=>handleReturn(loan.id)} className="px-3 py-1 bg-green-600 text-white hover:bg-green-700 rounded text-xs font-bold shadow-sm">確認歸還</button>)}</td>
+                      <td className="p-4 text-right">
+                        {loan.status === 'borrowed' && (
+                          <button onClick={()=>handleReturn(loan.id)} className="px-3 py-1 bg-green-600 text-white hover:bg-green-700 rounded text-xs font-bold shadow-sm">
+                            確認歸還
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   {loans.length === 0 && <tr><td colSpan="8" className="p-8 text-center text-slate-400">目前無借用紀錄</td></tr>}
@@ -743,7 +818,7 @@ export default function App() {
             </div>
           )}
 
-          {/* CATEGORIES */}
+          {/* 4. CATEGORIES VIEW (Simple) */}
           {viewMode === 'categories' && (
              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                {categories.map(c => (
@@ -773,6 +848,7 @@ export default function App() {
               <button onClick={()=>setIsModalOpen(false)}><X className="w-6 h-6 text-slate-400"/></button>
             </div>
             
+            {/* Session Form */}
             {modalType === 'session' && (
               <form onSubmit={handleSaveSession} className="space-y-4">
                 <div><label className="text-sm font-bold">版次名稱</label><input className="w-full border rounded p-2" value={sessionForm.name} onChange={e=>setSessionForm({...sessionForm, name:e.target.value})} placeholder="例如: 2023 上學期" required/></div>
@@ -781,6 +857,7 @@ export default function App() {
               </form>
             )}
 
+            {/* Equipment Form */}
             {modalType === 'equipment' && (
               <form onSubmit={handleSaveEquipment} className="space-y-4">
                 <div><label className="text-sm font-bold">名稱</label><input className="w-full border rounded p-2" value={equipForm.name} onChange={e=>setEquipForm({...equipForm, name:e.target.value})} required/></div>
@@ -799,10 +876,43 @@ export default function App() {
               </form>
             )}
 
-            {modalType === 'category' && (
+             {/* Category Form */}
+             {modalType === 'category' && (
               <form onSubmit={handleSaveCategory} className="space-y-4">
                 <div><label className="text-sm font-bold">分類名稱</label><input className="w-full border rounded p-2" value={catForm.name} onChange={e=>setCatForm({...catForm, name:e.target.value})} required/></div>
                 <button type="submit" className="w-full bg-teal-600 text-white py-2 rounded font-bold">儲存</button>
+              </form>
+            )}
+
+            {/* Borrow Form */}
+            {modalType === 'borrow' && (
+              <form onSubmit={handleBorrow} className="space-y-4">
+                <div className="bg-indigo-50 p-3 rounded text-sm text-indigo-800 font-bold mb-2">
+                  <div className="flex justify-between">
+                    <span>借用物品：{borrowForm.equipmentName}</span>
+                    <span>可借：{borrowForm.maxQuantity}</span>
+                  </div>
+                </div>
+                
+                {/* [NEW] 借用數量輸入框 */}
+                <div>
+                  <label className="text-sm font-bold">借用數量</label>
+                  <input 
+                    type="number" 
+                    min="1" 
+                    max={borrowForm.maxQuantity}
+                    className="w-full border rounded p-2" 
+                    value={borrowForm.quantity} 
+                    onChange={e=>setBorrowForm({...borrowForm, quantity:e.target.value})} 
+                    required
+                  />
+                  <p className="text-xs text-gray-400 mt-1">最大可借數量：{borrowForm.maxQuantity}</p>
+                </div>
+
+                <div><label className="text-sm font-bold">借用日期</label><input type="date" className="w-full border rounded p-2" value={borrowForm.date} onChange={e=>setBorrowForm({...borrowForm, date:e.target.value})} required/></div>
+                <div><label className="text-sm font-bold">借用人姓名</label><input className="w-full border rounded p-2" value={borrowForm.borrower} onChange={e=>setBorrowForm({...borrowForm, borrower:e.target.value})} required/></div>
+                <div><label className="text-sm font-bold">聯絡電話</label><input type="tel" className="w-full border rounded p-2" value={borrowForm.phone} onChange={e=>setBorrowForm({...borrowForm, phone:e.target.value})} required/></div>
+                <button type="submit" className="w-full bg-indigo-600 text-white py-2 rounded font-bold">確認借出</button>
               </form>
             )}
           </div>
