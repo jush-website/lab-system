@@ -446,7 +446,7 @@ export default function App() {
 
       <aside className={`fixed md:relative z-30 w-64 bg-teal-800 text-teal-50 h-screen transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 flex flex-col shadow-2xl`}>
         <div className="p-6 bg-teal-900/40">
-          <h1 className="text-xl font-bold flex items-center gap-2 text-white"><Beaker className="text-teal-300"/> 實驗室管理</h1>
+          <h1 className="text-xl font-bold flex items-center gap-2 text-white"><Beaker className="text-teal-300"/> 實驗室設備管理</h1>
         </div>
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           <button onClick={() => { setViewMode('dashboard'); setCurrentSession(null); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${viewMode === 'dashboard' ? 'bg-teal-600 text-white shadow-lg' : 'hover:bg-teal-700/50 text-teal-100'}`}>
