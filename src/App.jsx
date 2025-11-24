@@ -1086,8 +1086,9 @@ export default function App() {
           {/* Borrow Request View - 🟡 [LAYOUT FIXED] Mobile Flow & Larger Lists */}
           {viewMode === 'borrow-request' && currentSession && (
              <div className="flex flex-col lg:flex-row gap-6 lg:h-full lg:overflow-hidden">
-                {/* Left Column: Search - Mobile: Full height flow / Desktop: Fixed height split */}
-                <div className="flex-1 lg:w-7/12 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[400px] lg:min-h-0 lg:h-full">
+                {/* Left Column: Search - Mobile: Fixed Height with scroll / Desktop: Full height */}
+                {/* 🔴 Modified: Changed min-h-[400px] to h-[500px] (mobile) to force internal scroll and prevent page expansion */}
+                <div className="flex-1 lg:w-7/12 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden h-[500px] lg:h-full lg:min-h-0">
                    <div className="p-4 border-b bg-slate-50 shrink-0">
                       <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><Search className="w-4 h-4"/> 搜尋可用設備</h3>
                       <div className="relative">
@@ -1095,7 +1096,7 @@ export default function App() {
                         <input type="text" placeholder="輸入名稱搜尋..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-teal-500"/>
                       </div>
                    </div>
-                   <div className="flex-1 overflow-y-auto p-2 space-y-2 lg:max-h-full">
+                   <div className="flex-1 overflow-y-auto p-2 space-y-2">
                       {filteredEquipment.map(item => {
                         const available = getAvailability(item);
                         if(available <= 0) return null; 
@@ -1125,8 +1126,8 @@ export default function App() {
                           尚未選擇任何設備<br/>請從列表點擊 + 加入
                         </div>
                       ) : (
-                        // 🟡 [FIXED] Increased Max Height for better visibility
-                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                        // 🟡 [FIXED] Mobile: max-h-[250px], Desktop: max-h-[300px] with scroll
+                        <div className="space-y-2 max-h-[250px] lg:max-h-[300px] overflow-y-auto pr-1">
                            {cartItems.map(item => (
                              <div key={item.id} className="flex items-center justify-between p-2 bg-indigo-50 rounded-lg border border-indigo-100">
                                 <div className="flex-1 min-w-0 pr-2">
