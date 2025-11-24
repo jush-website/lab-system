@@ -29,7 +29,7 @@ import {
   Download, Filter, AlertTriangle, User, LayoutGrid, Menu, X, CheckCircle, 
   AlertCircle, Eye, EyeOff, ChevronRight, UserPlus, Calendar, FolderOpen,
   History, UserCheck, Phone, ArrowLeft, Clock, FileText, Hash, Home, 
-  Activity, Box, FileDown, ArrowUpRight, ArrowDownLeft, MousePointerClick, Sparkles, MoreVertical
+  Activity, Box, FileDown, ArrowUpRight, ArrowDownLeft, MousePointerClick, Sparkles, MoreVertical, Timer
 } from 'lucide-react';
 
 // ==========================================
@@ -158,7 +158,6 @@ const AuthScreen = () => {
           <button type="submit" disabled={loading} className="w-full bg-teal-600 text-white py-3 rounded-lg font-bold hover:bg-teal-700 transition-colors">{loading?'處理中...':(isRegister?'註冊帳號':'登入系統')}</button>
         </form>
         <button onClick={() => {setIsRegister(!isRegister); setError('')}} className="w-full mt-4 text-sm text-slate-500 hover:text-teal-600">切換為 {isRegister ? '登入' : '註冊'}</button>
-        <button onClick={handleDemoLogin} className="w-full mt-2 text-sm text-slate-400 underline hover:text-teal-600">訪客登入 (免註冊)</button>
       </div>
     </div>
   );
@@ -205,7 +204,11 @@ export default function App() {
   const [sessionForm, setSessionForm] = useState({ name: '', date: '' });
   const [equipForm, setEquipForm] = useState({ name: '', quantity: 1, categoryId: '', note: '' });
   const [catForm, setCatForm] = useState({ name: '' });
-  const [borrowForm, setBorrowForm] = useState({ borrower: '', phone: '', date: '', equipmentId: '', equipmentName: '', purpose: '', quantity: 1, maxQuantity: 0 });
+  // Added borrowDays
+  const [borrowForm, setBorrowForm] = useState({ 
+    borrower: '', phone: '', date: '', equipmentId: '', equipmentName: '', purpose: '', 
+    quantity: 1, maxQuantity: 0, borrowDays: 7 
+  });
 
   // Init Auth
   useEffect(() => {
@@ -222,8 +225,7 @@ export default function App() {
     return () => { unsubCat(); unsubSess(); };
   }, [user]);
 
-  // 🔥 Dashboard Logic: Lock to Latest Session with Dual Event (Borrow & Return) Tracking
-  // 🔴 FIX: Removed orderBy in Firestore query to prevent index error. Sorting is done in JS.
+  // Dashboard Logic
   useEffect(() => {
     if (!user || viewMode !== 'dashboard' || sessions.length === 0) {
       if (sessions.length === 0 && viewMode === 'dashboard') {
@@ -235,7 +237,6 @@ export default function App() {
     const latestSession = sessions[0];
     const targetSessionId = latestSession.id;
 
-    // Equipment Stats
     const qEquip = query(collection(db, 'artifacts', appId, 'public', 'data', 'equipment'), where('sessionId', '==', targetSessionId));
     const unsubEquip = onSnapshot(qEquip, (snap) => {
       let equipCount = 0;
@@ -250,12 +251,10 @@ export default function App() {
       setDashboardStats(prev => ({ ...prev, latestSessionId: targetSessionId, latestSessionName: latestSession.name, totalEquipment: equipCount, totalBorrowed: borrowedCount, lowStockCount: lowStock }));
     });
 
-    // Recent Activity Feed
     const qLoans = query(
       collection(db, 'artifacts', appId, 'public', 'data', 'loans'), 
       where('sessionId', '==', targetSessionId)
     );
-    
     const unsubLoans = onSnapshot(qLoans, (snap) => {
       const events = [];
       snap.forEach(doc => {
@@ -275,7 +274,7 @@ export default function App() {
           timestamp: data.createdAt ? data.createdAt.seconds : 0
         });
 
-        // 2. Return Event (if returned)
+        // 2. Return Event
         if (data.status === 'returned' && data.returnDate) {
           events.push({
             id: loanId + '_return',
@@ -291,7 +290,6 @@ export default function App() {
         }
       });
 
-      // Sort by Date (Descending), then by timestamp
       events.sort((a, b) => {
         if (a.date > b.date) return -1;
         if (a.date < b.date) return 1;
@@ -305,7 +303,6 @@ export default function App() {
   }, [user, viewMode, sessions]); 
 
   // Session Data
-  // 🔴 FIX: Removed orderBy in Firestore query.
   useEffect(() => {
     if (!user || !currentSession) return;
     const qEquip = query(collection(db, 'artifacts', appId, 'public', 'data', 'equipment'), where('sessionId', '==', currentSession.id));
@@ -403,11 +400,14 @@ export default function App() {
   const handleBorrow = async (e) => { 
     e.preventDefault(); if (!currentSession) return; 
     const qty = parseInt(borrowForm.quantity); 
+    const days = parseInt(borrowForm.borrowDays);
     if (qty > borrowForm.maxQuantity) { showToast(`庫存不足`, "error"); return; } 
     if (qty <= 0) { showToast("數量錯誤", "error"); return; } 
+    if (days <= 0) { showToast("天數錯誤", "error"); return; }
+
     try { 
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'loans'), { 
-        sessionId: currentSession.id, equipmentId: borrowForm.equipmentId, equipmentName: borrowForm.equipmentName, borrower: borrowForm.borrower, phone: borrowForm.phone, purpose: borrowForm.purpose, quantity: qty, borrowDate: borrowForm.date, returnDate: null, status: 'borrowed', 
+        sessionId: currentSession.id, equipmentId: borrowForm.equipmentId, equipmentName: borrowForm.equipmentName, borrower: borrowForm.borrower, phone: borrowForm.phone, purpose: borrowForm.purpose, quantity: qty, borrowDays: days, borrowDate: borrowForm.date, returnDate: null, status: 'borrowed', 
         createdAt: serverTimestamp(), updatedAt: serverTimestamp() 
       }); 
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', borrowForm.equipmentId), { borrowedCount: increment(qty) }); 
@@ -434,7 +434,26 @@ export default function App() {
   const filteredEquipment = useMemo(() => { return equipment.filter(item => { const matchSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()); const matchCat = selectedCategoryFilter === 'all' || item.categoryId === selectedCategoryFilter; return matchSearch && matchCat; }); }, [equipment, searchTerm, selectedCategoryFilter]);
   const openSessionModal = (item=null) => { setModalType('session'); setEditItem(item); setSessionForm(item ? {name: item.name, date: item.date} : {name: '', date: new Date().toISOString().slice(0,10)}); setIsModalOpen(true); };
   const openEquipModal = (item=null) => { setModalType('equipment'); setEditItem(item); setEquipForm(item ? {name: item.name, quantity: item.quantity, categoryId: item.categoryId, note: item.note} : {name: '', quantity: 1, categoryId: categories[0]?.id || '', note: ''}); setIsModalOpen(true); };
-  const openBorrowModal = (item) => { const available = getAvailability(item); if (available <= 0) { showToast("無庫存可借", "error"); return; } setModalType('borrow'); setBorrowForm({ borrower: '', phone: '', purpose: '', date: new Date().toISOString().slice(0,10), equipmentId: item.id, equipmentName: item.name, quantity: 1, maxQuantity: available }); setIsModalOpen(true); };
+  
+  const openBorrowModal = (item) => { 
+    const available = getAvailability(item); 
+    if (available <= 0) { showToast("無庫存可借", "error"); return; } 
+    setModalType('borrow'); 
+    setBorrowForm({ 
+      borrower: '', phone: '', purpose: '', date: new Date().toISOString().slice(0,10), 
+      equipmentId: item.id, equipmentName: item.name, quantity: 1, maxQuantity: available,
+      borrowDays: 7 // Default 7 days
+    }); 
+    setIsModalOpen(true); 
+  };
+
+  // Helper to calc expected return date
+  const getExpectedReturnDate = (dateStr, days) => {
+    if(!dateStr || !days) return '';
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + parseInt(days));
+    return d.toISOString().slice(0,10);
+  };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-teal-600 font-medium">系統載入中...</div>;
   if (!user) return <AuthScreen />;
@@ -635,10 +654,9 @@ export default function App() {
             </div>
           )}
 
-          {/* 🔴 LOANS VIEW (Updated: Mobile Cards + Desktop Table) */}
+          {/* 🔴 LOANS VIEW (Updated: Mobile Cards + Desktop Table with borrow days) */}
           {viewMode === 'loans' && currentSession && (
             <div className="space-y-6 max-w-[1600px] mx-auto">
-               {/* Header Info */}
                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
                   <h3 className="font-bold text-slate-700 flex items-center gap-2"><History className="w-5 h-5"/> 借用與歸還紀錄</h3>
                   <span className="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full font-bold">共 {loans.length} 筆</span>
@@ -648,9 +666,7 @@ export default function App() {
                <div className="block md:hidden space-y-4">
                  {loans.map(loan => (
                    <div key={loan.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 relative overflow-hidden">
-                     {/* Status Strip */}
                      <div className={`absolute left-0 top-0 bottom-0 w-1 ${loan.status === 'borrowed' ? 'bg-orange-500' : 'bg-green-500'}`}></div>
-                     
                      <div className="pl-3">
                        <div className="flex justify-between items-start mb-2">
                          <div>
@@ -667,6 +683,10 @@ export default function App() {
                          <div className="flex justify-between items-center mb-1">
                            <span className="font-medium text-slate-700">{loan.equipmentName}</span>
                            <span className="bg-slate-200 text-slate-700 px-2 rounded-full text-xs font-bold">x{loan.quantity}</span>
+                         </div>
+                         {/* Added borrow days info */}
+                         <div className="text-xs text-teal-600 font-medium mb-1 flex items-center gap-1">
+                            <Clock className="w-3 h-3"/> 借用 {loan.borrowDays || 7} 天
                          </div>
                          <div className="text-xs text-slate-500 line-clamp-2">{loan.purpose || '無備註'}</div>
                        </div>
@@ -694,13 +714,14 @@ export default function App() {
                <div className="hidden md:block bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200 flex flex-col max-h-[80vh]">
                   <div className="overflow-auto flex-1">
                     <table className="w-full text-left text-sm min-w-[1000px] border-collapse">
-                      <thead className="bg-slate-50 border-b uppercase text-slate-500 text-xs sticky top-0 z-20 shadow-sm"><tr><th className="p-4 font-semibold w-24 bg-slate-50">狀態</th><th className="p-4 font-semibold w-48 bg-slate-50">借用人</th><th className="p-4 font-semibold w-48 bg-slate-50">設備</th><th className="p-4 font-semibold w-64 bg-slate-50">用途</th><th className="p-4 font-semibold w-32 bg-slate-50">借用日</th><th className="p-4 font-semibold w-32 bg-slate-50">歸還日</th><th className="p-4 font-semibold text-right w-32 bg-slate-50 sticky right-0">動作</th></tr></thead>
+                      <thead className="bg-slate-50 border-b uppercase text-slate-500 text-xs sticky top-0 z-20 shadow-sm"><tr><th className="p-4 font-semibold w-24 bg-slate-50">狀態</th><th className="p-4 font-semibold w-48 bg-slate-50">借用人</th><th className="p-4 font-semibold w-48 bg-slate-50">設備</th><th className="p-4 font-semibold w-24 bg-slate-50">天數</th><th className="p-4 font-semibold w-64 bg-slate-50">用途</th><th className="p-4 font-semibold w-32 bg-slate-50">借用日</th><th className="p-4 font-semibold w-32 bg-slate-50">歸還日</th><th className="p-4 font-semibold text-right w-32 bg-slate-50 sticky right-0">動作</th></tr></thead>
                       <tbody className="divide-y divide-slate-100">
                         {loans.map(loan => (
                           <tr key={loan.id} className={loan.status === 'borrowed' ? 'bg-orange-50/30' : ''}>
                             <td className="p-4">{loan.status === 'borrowed' ? <span className="text-orange-700 bg-orange-100 px-2.5 py-1 rounded-full text-xs font-bold border border-orange-200 whitespace-nowrap">借用中</span> : <span className="text-green-700 bg-green-100 px-2.5 py-1 rounded-full text-xs font-bold border border-green-200 whitespace-nowrap">已歸還</span>}</td>
                             <td className="p-4"><div className="font-bold text-slate-700">{loan.borrower}</div><div className="text-xs text-slate-500 mt-0.5">{loan.phone}</div></td>
                             <td className="p-4 font-medium text-slate-800">{loan.equipmentName} <span className="ml-2 bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-xs font-mono">x{loan.quantity}</span></td>
+                            <td className="p-4 text-slate-600 font-mono">{loan.borrowDays || 7}</td>
                             <td className="p-4 text-slate-600 max-w-xs truncate" title={loan.purpose}>{loan.purpose || '-'}</td>
                             <td className="p-4 font-mono text-slate-500 whitespace-nowrap">{loan.borrowDate}</td>
                             <td className="p-4 font-mono text-slate-500 whitespace-nowrap">{loan.returnDate || '-'}</td>
@@ -709,7 +730,7 @@ export default function App() {
                             </td>
                           </tr>
                         ))}
-                        {loans.length === 0 && <tr><td colSpan="7" className="p-12 text-center text-slate-400">無紀錄</td></tr>}
+                        {loans.length === 0 && <tr><td colSpan="8" className="p-12 text-center text-slate-400">無紀錄</td></tr>}
                       </tbody>
                     </table>
                   </div>
@@ -786,14 +807,45 @@ export default function App() {
 
             {modalType === 'borrow' && (
               <form onSubmit={handleBorrow} className="space-y-4">
-                <div className="bg-indigo-50 p-4 rounded-xl text-sm text-indigo-800 font-bold mb-4 flex items-center justify-between border border-indigo-100"><span className="flex items-center gap-2"><Box className="w-4 h-4"/> {borrowForm.equipmentName}</span><span className="bg-white px-2 py-0.5 rounded text-indigo-600 text-xs">庫存: {borrowForm.maxQuantity}</span></div>
-                <div><label className="text-sm font-bold text-slate-700 mb-1 block">借用數量</label><input type="number" min="1" max={borrowForm.maxQuantity} className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.quantity} onChange={e=>setBorrowForm({...borrowForm, quantity:e.target.value})} required /></div>
-                <div><label className="text-sm font-bold text-slate-700 mb-1 block">借用日期</label><input type="date" className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.date} onChange={e=>setBorrowForm({...borrowForm, date:e.target.value})} required/></div>
+                <div className="bg-indigo-50 p-4 rounded-xl text-sm text-indigo-800 font-bold mb-4 flex items-center justify-between border border-indigo-100">
+                  <span className="flex items-center gap-2"><Box className="w-4 h-4"/> {borrowForm.equipmentName}</span>
+                  <span className="bg-white px-2 py-0.5 rounded text-indigo-600 text-xs">庫存: {borrowForm.maxQuantity}</span>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-1 block">借用數量</label>
+                    <input type="number" min="1" max={borrowForm.maxQuantity} className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.quantity} onChange={e=>setBorrowForm({...borrowForm, quantity:e.target.value})} required />
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-1 block">借用天數</label>
+                    <div className="relative">
+                      <input type="number" min="1" className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none pr-8" value={borrowForm.borrowDays} onChange={e=>setBorrowForm({...borrowForm, borrowDays:e.target.value})} required />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">天</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-bold text-slate-700 mb-1 block">借用日期</label>
+                  <input type="date" className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.date} onChange={e=>setBorrowForm({...borrowForm, date:e.target.value})} required/>
+                  {/* Simple return date hint */}
+                  {borrowForm.date && borrowForm.borrowDays && (
+                    <p className="text-xs text-indigo-600 mt-1 flex items-center gap-1">
+                      <Timer className="w-3 h-3"/> 預計歸還：{getExpectedReturnDate(borrowForm.date, borrowForm.borrowDays)}
+                    </p>
+                  )}
+                </div>
+                
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="text-sm font-bold text-slate-700 mb-1 block">借用人姓名</label><input className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.borrower} onChange={e=>setBorrowForm({...borrowForm, borrower:e.target.value})} required/></div>
                   <div><label className="text-sm font-bold text-slate-700 mb-1 block">聯絡電話</label><input type="tel" className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.phone} onChange={e=>setBorrowForm({...borrowForm, phone:e.target.value})} required/></div>
                 </div>
-                <div><label className="text-sm font-bold text-slate-700 mb-1 block">借用用途</label><textarea className="w-full border border-slate-300 rounded-lg p-2.5 h-20 resize-none focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.purpose} onChange={e=>setBorrowForm({...borrowForm, purpose:e.target.value})} required/></div>
+                
+                <div>
+                  <label className="text-sm font-bold text-slate-700 mb-1 block">借用用途</label>
+                  <textarea className="w-full border border-slate-300 rounded-lg p-2.5 h-20 resize-none focus:ring-2 focus:ring-indigo-500 outline-none" value={borrowForm.purpose} onChange={e=>setBorrowForm({...borrowForm, purpose:e.target.value})} placeholder="上課用...." required/>
+                </div>
                 <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">確認借出</button>
               </form>
             )}
@@ -803,3 +855,5 @@ export default function App() {
     </div>
   );
 }
+
+
