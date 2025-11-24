@@ -834,7 +834,7 @@ export default function App() {
                     </select>
                     <div className="relative">
                         <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <select value={sortOption} onChange={e=>setSortOption(e.target.value)} className="border rounded-lg pl-10 pr-4 py-2 outline-none bg-white min-w-[120px]">
+                        <select value={sortOption} onChange={e=>setSortOption(e.target.value)} className="border rounded-lg pl-10 px-4 py-2 outline-none bg-white min-w-[120px]">
                             <option value="name">名稱排序</option>
                             <option value="quantity_desc">數量 (多→少)</option>
                             <option value="quantity_asc">數量 (少→多)</option>
