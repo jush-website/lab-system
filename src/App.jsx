@@ -149,7 +149,7 @@ const AuthScreen = () => {
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden p-8">
         <div className="text-center mb-6">
           <div className="mx-auto w-16 h-16 bg-teal-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg"><Beaker className="w-8 h-8 text-white"/></div>
-          <h1 className="text-2xl font-bold text-slate-800">實驗室管理系統</h1>
+          <h1 className="text-2xl font-bold text-slate-800">實驗室設備管理系統</h1>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} className="w-full border border-slate-300 p-3 rounded-lg outline-none focus:border-teal-500" required />
