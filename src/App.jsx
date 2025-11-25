@@ -35,7 +35,7 @@ import {
 import { 
   Beaker, ClipboardList, Settings, LogOut, Plus, Search, Trash2, Edit2, 
   Download, Filter, AlertTriangle, User, LayoutGrid, Menu, X, CheckCircle, 
-  AlertCircle, Eye, EyeOff, ChevronRight, UserPlus, Calendar, FolderOpen,
+  AlertCircle, Eye, EyeOff, ChevronRight, ChevronLeft, UserPlus, Calendar, FolderOpen,
   History, UserCheck, Phone, ArrowLeft, Clock, FileText, Hash, Home, 
   Activity, Box, FileDown, ArrowUpRight, ArrowDownLeft, MousePointerClick, Sparkles, MoreVertical, Timer, ShoppingCart, Minus, ArrowUpDown, Copy, Camera, Image as ImageIcon, Upload, CheckSquare
 } from 'lucide-react';
@@ -59,6 +59,9 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app); 
 const appId = 'lab-management-system-production';
+
+// --- 常數設定 ---
+const ITEMS_PER_PAGE = 6; // 每頁顯示 6 筆
 
 // --- 元件：自定義確認視窗 (一般/危險操作) ---
 const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isDangerous }) => {
@@ -166,6 +169,32 @@ const AddedToCartModal = ({ isOpen, item, onClose }) => {
             <p className="text-sm text-slate-300">{item?.name} x 1</p>
         </div>
       </div>
+    </div>
+  );
+};
+
+// --- 元件：分頁控制器 ---
+const PaginationControl = ({ currentPage, totalPages, onPageChange }) => {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-3 p-4 bg-white border-t border-slate-100">
+      <button 
+        onClick={() => onPageChange(currentPage - 1)} 
+        disabled={currentPage === 1}
+        className="p-2 rounded-lg bg-slate-50 text-slate-600 disabled:opacity-30 hover:bg-teal-50 hover:text-teal-600 transition-colors"
+      >
+        <ChevronLeft className="w-5 h-5" />
+      </button>
+      <span className="text-sm font-bold text-slate-600">
+        {currentPage} / {totalPages}
+      </span>
+      <button 
+        onClick={() => onPageChange(currentPage + 1)} 
+        disabled={currentPage === totalPages}
+        className="p-2 rounded-lg bg-slate-50 text-slate-600 disabled:opacity-30 hover:bg-teal-50 hover:text-teal-600 transition-colors"
+      >
+        <ChevronRight className="w-5 h-5" />
+      </button>
     </div>
   );
 };
@@ -283,7 +312,7 @@ export default function App() {
     totalEquipment: 0,
     totalBorrowed: 0,
     lowStockCount: 0,
-    groupedActivity: [] // Modified to store grouped activities
+    groupedActivity: [] 
   });
 
   // UI State
@@ -291,11 +320,14 @@ export default function App() {
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
   const [sortOption, setSortOption] = useState('name');
   
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', action: null });
-  const [returnDialog, setReturnDialog] = useState({ isOpen: false, loan: null }); // New state for return
-  const [addedItemModal, setAddedItemModal] = useState({ isOpen: false, item: null }); // New state for added item
+  const [returnDialog, setReturnDialog] = useState({ isOpen: false, loan: null }); 
+  const [addedItemModal, setAddedItemModal] = useState({ isOpen: false, item: null }); 
   
   // Modals State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -319,6 +351,11 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, u => { setUser(u); setLoading(false); });
     return () => unsubscribe();
   }, []);
+
+  // Reset Pagination when Filters Change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedCategoryFilter, sortOption, viewMode, currentSession]);
 
   // Global Listeners
   useEffect(() => {
@@ -357,19 +394,17 @@ export default function App() {
       snap.forEach(doc => {
         const data = doc.data();
         const loanId = doc.id;
-        // Borrow Event
         rawEvents.push({
           id: loanId + '_borrow',
           originalId: loanId,
           sessionId: data.sessionId,
           type: 'borrow',
-          date: data.borrowDate, // String YYYY-MM-DD
+          date: data.borrowDate, 
           borrower: data.borrower,
           equipmentName: data.equipmentName,
           quantity: data.quantity,
           timestamp: data.createdAt ? data.createdAt.seconds : 0
         });
-        // Return Event
         if (data.status === 'returned' && data.returnDate) {
           rawEvents.push({
             id: loanId + '_return',
@@ -380,20 +415,15 @@ export default function App() {
             borrower: data.borrower,
             equipmentName: data.equipmentName,
             quantity: data.quantity,
-            // Logic: if update time is close to now, it's fresh. 
-            // If createdAt is old, we use updatedAt.
             timestamp: data.updatedAt ? data.updatedAt.seconds : Date.now()/1000
           });
         }
       });
 
-      // Sort raw events by timestamp desc
       rawEvents.sort((a, b) => b.timestamp - a.timestamp);
 
-      // Grouping Logic
       const grouped = [];
       rawEvents.forEach(event => {
-        // Try to find a group that matches: Same Type, Same Borrower, Timestamp within 60s
         const group = grouped.find(g => 
           g.type === event.type && 
           g.borrower === event.borrower && 
@@ -440,7 +470,6 @@ export default function App() {
     const available = getAvailability(item);
     if(available <= 0) { showToast("此設備已無庫存", "error"); return; }
     
-    // Show Pop-up Modal instead of just toast
     setAddedItemModal({ isOpen: true, item: item });
 
     if (existing) {
@@ -465,7 +494,6 @@ export default function App() {
     }));
   };
 
-  // Direct input for cart qty
   const handleCartQtyInput = (id, val) => {
       const newQty = parseInt(val);
       setCartItems(cartItems.map(c => {
@@ -481,7 +509,6 @@ export default function App() {
       }));
   };
 
-  // Image Handler
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -494,7 +521,6 @@ export default function App() {
     }
   };
 
-  // Handlers
   const handleStatClick = (target) => {
     if (!dashboardStats.latestSessionId) { showToast("目前無資料", "error"); return; }
     const targetSession = sessions.find(s => s.id === dashboardStats.latestSessionId);
@@ -548,7 +574,6 @@ export default function App() {
     showToast("CSV 下載已開始");
   };
 
-  // CRUD Handlers
   const handleSaveSession = async (e) => {
     e.preventDefault();
     try {
@@ -557,9 +582,7 @@ export default function App() {
         date: sessionForm.date,
         createdBy: user.uid
       };
-      
       let newSessionRef;
-
       if (editItem) {
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', editItem.id), {
           ...basePayload,
@@ -571,15 +594,12 @@ export default function App() {
           ...basePayload,
           createdAt: serverTimestamp()
         });
-        
         if (sessionForm.copyFromPrevious && sessions.length > 0) {
              const latestSession = sessions[0];
              const qSource = query(collection(db, 'artifacts', appId, 'public', 'data', 'equipment'), where('sessionId', '==', latestSession.id));
              const sourceDocs = await getDocs(qSource);
-             
              const batch = writeBatch(db);
              let count = 0;
-             
              sourceDocs.forEach(docSnap => {
                  const data = docSnap.data();
                  const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'equipment'));
@@ -592,7 +612,6 @@ export default function App() {
                  });
                  count++;
              });
-             
              if (count > 0) await batch.commit();
              showToast(`已建立版次並複製 ${count} 項設備`);
         } else {
@@ -615,9 +634,7 @@ export default function App() {
   const handleSaveEquipment = async (e) => {
     e.preventDefault();
     if (!currentSession) return;
-    
     let imageUrl = equipForm.imageUrl || '';
-
     if (equipImage) {
         try {
             const imageRef = ref(storage, `equipment_images/${Date.now()}_${equipImage.name}`);
@@ -628,7 +645,6 @@ export default function App() {
             showToast("圖片上傳失敗 (請檢查 Storage 設定)", "error");
         }
     }
-
     try {
       const cat = categories.find(c => c.id === equipForm.categoryId);
       const payload = {
@@ -657,9 +673,7 @@ export default function App() {
     if (cartItems.length === 0) { showToast("請先選擇設備加入借用清單", "error"); return; }
     const days = parseInt(borrowForm.borrowDays);
     if (days <= 0) { showToast("借用天數錯誤", "error"); return; }
-
     try { 
-      // Use batch writes for atomicity if possible, but keeping it simple with Promise.all for now as structure matches original logic
       const promises = cartItems.map(async (item) => {
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'loans'), { 
           sessionId: currentSession.id, equipmentId: item.id, equipmentName: item.name, borrower: borrowForm.borrower, phone: borrowForm.phone, purpose: borrowForm.purpose, quantity: item.borrowQty, borrowDays: days, borrowDate: borrowForm.date, returnDate: null, status: 'borrowed', createdAt: serverTimestamp(), updatedAt: serverTimestamp() 
@@ -671,7 +685,6 @@ export default function App() {
     } catch (err) { showToast("借用失敗", "error"); } 
   };
 
-  // 🟡 [NEW] Updated Return Logic with Partial Return Support
   const initiateReturn = (loanId) => {
       const loan = loans.find(l => l.id === loanId);
       if (loan) setReturnDialog({ isOpen: true, loan });
@@ -685,7 +698,6 @@ export default function App() {
         const isFullReturn = returnQty >= originalQty;
 
         if (isFullReturn) {
-            // Full Return
             await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'loans', loanId), { 
                 returnDate: new Date().toISOString().split('T')[0], 
                 status: 'returned', 
@@ -696,30 +708,23 @@ export default function App() {
             });
             showToast("全部歸還完成");
         } else {
-            // Partial Return
-            // 1. Update original loan (subtract returned qty)
             await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'loans', loanId), {
                 quantity: originalQty - returnQty,
                 updatedAt: serverTimestamp()
             });
-
-            // 2. Create new 'Returned' record
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'loans'), {
                 ...loanDoc,
                 quantity: returnQty,
                 status: 'returned',
                 returnDate: new Date().toISOString().split('T')[0],
-                createdAt: serverTimestamp(), // Keep sort order roughly same
+                createdAt: serverTimestamp(), 
                 updatedAt: serverTimestamp()
             });
-
-            // 3. Update Inventory
             await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', loanDoc.equipmentId), {
                 borrowedCount: increment(-returnQty)
             });
             showToast(`已歸還 ${returnQty} 個，剩餘 ${originalQty - returnQty} 個`);
         }
-
         setReturnDialog({ isOpen: false, loan: null });
     } catch (err) {
         console.error(err);
@@ -727,7 +732,6 @@ export default function App() {
     }
   };
   
-  // Filtering & Sorting
   const filteredEquipment = useMemo(() => {
     const result = equipment.filter(item => {
       const matchSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -748,6 +752,13 @@ export default function App() {
     });
     return result;
   }, [equipment, searchTerm, selectedCategoryFilter, sortOption]);
+
+  // 🟢 計算分頁數據
+  const totalPages = Math.ceil(filteredEquipment.length / ITEMS_PER_PAGE);
+  const paginatedEquipment = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredEquipment.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredEquipment, currentPage]);
 
   const openSessionModal = (item=null) => { 
       setModalType('session'); 
@@ -787,7 +798,6 @@ export default function App() {
       
       {toast && <Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)} />}
 
-      {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-20 md:hidden backdrop-blur-sm transition-opacity"
@@ -795,7 +805,6 @@ export default function App() {
         />
       )}
 
-      {/* Sidebar */}
       <aside className={`fixed md:relative z-30 w-64 bg-teal-800 text-teal-50 h-screen transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 flex flex-col shadow-2xl`}>
         <div className="p-6 bg-teal-900/40">
           <h1 className="text-xl font-bold flex items-center"><Beaker/> 實驗室設備管理系統</h1>
@@ -830,13 +839,11 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
         <header className="bg-white shadow-sm p-4 flex items-center justify-between z-20">
           <div className="flex items-center gap-4">
              <button onClick={()=>setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2"><Menu/></button>
              <div>
-                {/* Header Title */}
                 <div className="min-w-0 flex-1 pr-2">
                   <h2 className="text-lg md:text-2xl font-bold text-slate-800 truncate max-w-[200px] md:max-w-md">
                     {viewMode === 'sessions' && '版次管理'}
@@ -855,7 +862,6 @@ export default function App() {
              </div>
           </div>
           <div className="flex gap-2 flex-shrink-0">
-            {/* Buttons */}
             {viewMode === 'equipment' && (
                 <>
                 <button onClick={()=>handleExportCSV()} className="bg-white border border-slate-300 text-slate-700 px-3 py-2 md:px-4 rounded-lg flex items-center gap-2 hover:bg-slate-50 shadow-sm transition-all active:scale-95"><FileDown className="w-4 h-4 text-teal-600"/> <span className="hidden sm:inline">匯出 CSV</span></button>
@@ -867,7 +873,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50">
           
           {/* Dashboard View */}
@@ -880,7 +885,6 @@ export default function App() {
                     <StatCard title="低庫存警示" value={dashboardStats.lowStockCount} subtext="庫存低於 3 件" icon={AlertTriangle} colorClass="bg-red-500" onClick={() => handleStatClick('lowstock')} />
                     <StatCard title="管理中版次總數" value={sessions.length} icon={FolderOpen} colorClass="bg-blue-500" onClick={() =>setViewMode('sessions')} />
                 </div>
-                {/* 🟡 [MODIFIED] Grouped Activity Feed */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col h-[400px]">
                     <div className="flex items-center justify-between mb-4"><h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><History className="w-5 h-5 text-teal-600"/> {dashboardStats.latestSessionName} - 最新借用動態</h3></div>
@@ -951,7 +955,7 @@ export default function App() {
             </div>
           )}
 
-          {/* Equipment View */}
+          {/* 🟡 [PAGINATED] Equipment View */}
           {viewMode === 'equipment' && currentSession && (
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
@@ -976,49 +980,53 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Mobile Card View */}
-              <div className="block md:hidden space-y-4">
-                {filteredEquipment.map(item => {
-                  const borrowed = item.borrowedCount || 0; 
-                  const available = item.quantity - borrowed;
-                  return (
-                    <div key={item.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex gap-3">
-                      {item.imageUrl && (
-                        <div className="w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden border border-slate-100">
-                          <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <h3 className="font-bold text-lg text-slate-800 truncate">{item.name}</h3>
-                            <span className="inline-block bg-slate-100 text-slate-500 text-xs px-2 py-1 rounded mt-1">{item.categoryName}</span>
+              {/* Mobile Card View (Paginated) */}
+              <div className="block md:hidden">
+                <div className="space-y-4">
+                  {paginatedEquipment.map(item => {
+                    const borrowed = item.borrowedCount || 0; 
+                    const available = item.quantity - borrowed;
+                    return (
+                      <div key={item.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex gap-3">
+                        {item.imageUrl && (
+                          <div className="w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden border border-slate-100">
+                            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
                           </div>
-                          <div className="flex gap-1">
-                             <button onClick={()=>openEquipModal(item)} className="p-2 text-slate-400 hover:text-teal-600"><Edit2 className="w-4 h-4"/></button>
-                             <button onClick={()=>deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', item.id))} className="p-2 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <h3 className="font-bold text-lg text-slate-800 truncate">{item.name}</h3>
+                              <span className="inline-block bg-slate-100 text-slate-500 text-xs px-2 py-1 rounded mt-1">{item.categoryName}</span>
+                            </div>
+                            <div className="flex gap-1">
+                              <button onClick={()=>openEquipModal(item)} className="p-2 text-slate-400 hover:text-teal-600"><Edit2 className="w-4 h-4"/></button>
+                              <button onClick={()=>deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', item.id))} className="p-2 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
+                            </div>
                           </div>
+                          <div className="flex justify-between text-sm text-slate-600 mb-2">
+                            <span>總: {item.quantity}</span>
+                            <span className="text-orange-600">借: {borrowed}</span>
+                            <span className={`font-bold ${available===0?'text-red-600':'text-green-600'}`}>剩: {available}</span>
+                          </div>
+                          <button 
+                            onClick={()=>addToCart(item)} 
+                            disabled={available <= 0}
+                            className={`w-full py-1.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 ${available <= 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'}`}
+                          >
+                            <Plus className="w-4 h-4"/> 加入
+                          </button>
                         </div>
-                        <div className="flex justify-between text-sm text-slate-600 mb-2">
-                          <span>總: {item.quantity}</span>
-                          <span className="text-orange-600">借: {borrowed}</span>
-                          <span className={`font-bold ${available===0?'text-red-600':'text-green-600'}`}>剩: {available}</span>
-                        </div>
-                        <button 
-                          onClick={()=>addToCart(item)} 
-                          disabled={available <= 0}
-                          className={`w-full py-1.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 ${available <= 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'}`}
-                        >
-                          <Plus className="w-4 h-4"/> 加入
-                        </button>
                       </div>
-                    </div>
-                  );
-                })}
-                {filteredEquipment.length===0 && <div className="text-center py-10 text-slate-400">無資料</div>}
+                    );
+                  })}
+                  {filteredEquipment.length===0 && <div className="text-center py-10 text-slate-400">無資料</div>}
+                </div>
+                {/* Pagination Control */}
+                <PaginationControl currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
               </div>
 
-              {/* Desktop Table View */}
+              {/* Desktop Table View (Paginated) */}
               <div className="hidden md:block bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 border-b text-sm uppercase text-slate-500 sticky top-0 z-20 shadow-sm">
@@ -1031,7 +1039,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredEquipment.map(item => {
+                    {paginatedEquipment.map(item => {
                       const borrowed = item.borrowedCount || 0;
                       const available = item.quantity - borrowed;
                       return (
@@ -1079,16 +1087,16 @@ export default function App() {
                     {filteredEquipment.length === 0 && <tr><td colSpan="5" className="p-12 text-center text-slate-400">沒有找到相關設備</td></tr>}
                   </tbody>
                 </table>
+                {/* Pagination Control */}
+                <PaginationControl currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
               </div>
             </div>
           )}
 
-          {/* Borrow Request View - 🟡 [LAYOUT FIXED] Mobile Flow & Larger Lists */}
+          {/* 🟡 [PAGINATED] Borrow Request View */}
           {viewMode === 'borrow-request' && currentSession && (
              <div className="flex flex-col lg:flex-row gap-6 lg:h-full lg:overflow-hidden">
-                {/* Left Column: Search - Mobile: Fixed Height with scroll / Desktop: Full height */}
-                {/* 🔴 Modified: Reduced height from h-[300px] to h-[520px] on mobile for better visibility of cart below */}
-                <div className="flex-1 lg:w-7/12 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden h-[520px] lg:h-full lg:min-h-0">
+                <div className="flex-1 lg:w-7/12 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden lg:h-full lg:min-h-0">
                    <div className="p-4 border-b bg-slate-50 shrink-0">
                       <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><Search className="w-4 h-4"/> 搜尋可用設備</h3>
                       <div className="relative">
@@ -1097,7 +1105,7 @@ export default function App() {
                       </div>
                    </div>
                    <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                      {filteredEquipment.map(item => {
+                      {paginatedEquipment.map(item => {
                         const available = getAvailability(item);
                         if(available <= 0) return null; 
                         return (
@@ -1115,9 +1123,10 @@ export default function App() {
                       })}
                       {filteredEquipment.filter(i => getAvailability(i) > 0).length === 0 && <div className="text-center p-10 text-slate-400">無可用設備</div>}
                    </div>
+                   {/* Pagination Control */}
+                   <PaginationControl currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
                 </div>
 
-                {/* Right Column: Cart & Form - Mobile: Flow below / Desktop: Fixed height split */}
                 <div className="flex-1 lg:w-5/12 flex flex-col gap-4 lg:overflow-y-auto lg:h-full">
                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 shrink-0">
                       <h3 className="font-bold text-slate-700 mb-3 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-indigo-600"/> 借用清單 ({cartItems.length})</h3>
@@ -1126,7 +1135,6 @@ export default function App() {
                           尚未選擇任何設備<br/>請從列表點擊 + 加入
                         </div>
                       ) : (
-                        // 🟡 [FIXED] Mobile: max-h-[250px], Desktop: max-h-[300px] with scroll
                         <div className="space-y-2 max-h-[250px] lg:max-h-[300px] overflow-y-auto pr-1">
                            {cartItems.map(item => (
                              <div key={item.id} className="flex items-center justify-between p-2 bg-indigo-50 rounded-lg border border-indigo-100">
@@ -1225,7 +1233,6 @@ export default function App() {
                         <td className="p-4 font-mono text-slate-500 whitespace-nowrap">{loan.returnDate || '-'}</td>
                         <td className="p-4 text-right sticky right-0 bg-white (loan.status === 'borrowed' ? 'bg-orange-50/30' : '')">
                           {loan.status === 'borrowed' && (
-                            // 🟡 [MODIFIED] Use initiateReturn instead of handleReturn directly
                             <button onClick={()=>initiateReturn(loan.id)} className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95 whitespace-nowrap flex items-center gap-1 ml-auto">
                               <CheckCircle className="w-3 h-3"/> 確認歸還
                             </button>
@@ -1318,7 +1325,6 @@ export default function App() {
                       </div>
                     )}
                     <div className="flex-1 flex flex-col gap-2">
-                       {/* 🔴 [FIXED] Split into two buttons */}
                        <input 
                          type="file" 
                          accept="image/*" 
