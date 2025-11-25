@@ -322,6 +322,7 @@ export default function App() {
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
+  const [currentLoanPage, setCurrentLoanPage] = useState(1); // 🟢 新增：借還紀錄的分頁狀態
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
@@ -355,6 +356,7 @@ export default function App() {
   // Reset Pagination when Filters Change
   useEffect(() => {
     setCurrentPage(1);
+    setCurrentLoanPage(1);
   }, [searchTerm, selectedCategoryFilter, sortOption, viewMode, currentSession]);
 
   // Global Listeners
@@ -753,12 +755,19 @@ export default function App() {
     return result;
   }, [equipment, searchTerm, selectedCategoryFilter, sortOption]);
 
-  // 🟢 計算分頁數據
+  // 🟢 計算設備列表分頁
   const totalPages = Math.ceil(filteredEquipment.length / ITEMS_PER_PAGE);
   const paginatedEquipment = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     return filteredEquipment.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredEquipment, currentPage]);
+
+  // 🟢 計算借還紀錄分頁
+  const totalLoanPages = Math.ceil(loans.length / ITEMS_PER_PAGE);
+  const paginatedLoans = useMemo(() => {
+    const startIndex = (currentLoanPage - 1) * ITEMS_PER_PAGE;
+    return loans.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [loans, currentLoanPage]);
 
   const openSessionModal = (item=null) => { 
       setModalType('session'); 
@@ -1096,7 +1105,7 @@ export default function App() {
           {/* 🟡 [PAGINATED] Borrow Request View */}
           {viewMode === 'borrow-request' && currentSession && (
              <div className="flex flex-col lg:flex-row gap-6 lg:h-full lg:overflow-hidden">
-                <div className="flex-1 lg:w-7/12 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden lg:h-full lg:min-h-0">
+                <div className="flex-1 lg:w-7/12 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden h-[520px] lg:h-full lg:min-h-0">
                    <div className="p-4 border-b bg-slate-50 shrink-0">
                       <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2"><Search className="w-4 h-4"/> 搜尋可用設備</h3>
                       <div className="relative">
@@ -1189,60 +1198,109 @@ export default function App() {
              </div>
           )}
 
-          {/* Loan History View */}
+          {/* 🟡 [PAGINATED] Loan History View - Mobile Cards & Desktop Table */}
           {viewMode === 'loans' && currentSession && (
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
-              <div className="p-4 border-b bg-slate-50 flex justify-between items-center sticky top-0 z-30">
+            <div className="space-y-4">
+              <div className="bg-white p-4 rounded-xl border border-slate-200 flex justify-between items-center sticky top-0 z-30 shadow-sm">
                 <h3 className="font-bold text-slate-700 flex items-center gap-2"><History className="w-5 h-5"/> 借用與歸還紀錄</h3>
                 <span className="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full font-bold">共 {loans.length} 筆</span>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm min-w-[1000px]">
-                  <thead className="bg-slate-50 border-b uppercase text-slate-500 text-xs sticky top-0 z-20 shadow-sm">
-                    <tr>
-                      <th className="p-4 font-semibold w-24 bg-slate-50">狀態</th>
-                      <th className="p-4 font-semibold w-48 bg-slate-50">借用人資訊</th>
-                      <th className="p-4 font-semibold w-48 bg-slate-50">設備 (數量)</th>
-                      <th className="p-4 font-semibold w-64 bg-slate-50">借用用途</th>
-                      <th className="p-4 font-semibold w-32 bg-slate-50">借用日期</th>
-                      <th className="p-4 font-semibold w-32 bg-slate-50">歸還日期</th>
-                      <th className="p-4 font-semibold text-right w-32 bg-slate-50 sticky right-0">動作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {loans.map(loan => (
-                      <tr key={loan.id} className={loan.status === 'borrowed' ? 'bg-orange-50/30' : ''}>
-                        <td className="p-4">
-                          {loan.status === 'borrowed' 
-                            ? <span className="text-orange-700 bg-orange-100 px-2.5 py-1 rounded-full text-xs font-bold border border-orange-200 whitespace-nowrap">借用中</span>
-                            : <span className="text-green-700 bg-green-100 px-2.5 py-1 rounded-full text-xs font-bold border border-green-200 whitespace-nowrap">已歸還</span>
-                          }
-                        </td>
-                        <td className="p-4">
-                          <div className="font-bold text-slate-700">{loan.borrower}</div>
-                          <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5"><Phone className="w-3 h-3"/> {loan.phone}</div>
-                        </td>
-                        <td className="p-4 font-medium text-slate-800">
-                          {loan.equipmentName} 
-                          <span className="ml-2 bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-xs font-mono">x{loan.quantity}</span>
-                        </td>
-                        <td className="p-4 text-slate-600 max-w-xs truncate" title={loan.purpose}>
-                          {loan.purpose || <span className="text-slate-300 italic">無</span>}
-                        </td>
-                        <td className="p-4 font-mono text-slate-500 whitespace-nowrap">{loan.borrowDate}</td>
-                        <td className="p-4 font-mono text-slate-500 whitespace-nowrap">{loan.returnDate || '-'}</td>
-                        <td className="p-4 text-right sticky right-0 bg-white (loan.status === 'borrowed' ? 'bg-orange-50/30' : '')">
-                          {loan.status === 'borrowed' && (
-                            <button onClick={()=>initiateReturn(loan.id)} className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95 whitespace-nowrap flex items-center gap-1 ml-auto">
-                              <CheckCircle className="w-3 h-3"/> 確認歸還
-                            </button>
-                          )}
-                        </td>
+
+              {/* Mobile Card View */}
+              <div className="block md:hidden space-y-4">
+                {paginatedLoans.map(loan => (
+                  <div key={loan.id} className={`bg-white p-4 rounded-xl shadow-sm border ${loan.status === 'borrowed' ? 'border-orange-200' : 'border-green-200'}`}>
+                    <div className="flex justify-between items-start mb-3 pb-3 border-b border-slate-100">
+                      <div>
+                        <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-bold ${loan.status === 'borrowed' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+                          {loan.status === 'borrowed' ? '借用中' : '已歸還'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-400 font-mono">{loan.borrowDate}</div>
+                    </div>
+                    
+                    <div className="space-y-2 mb-4">
+                      <div className="flex justify-between">
+                        <span className="text-sm font-bold text-slate-700">{loan.borrower}</span>
+                        <span className="text-xs text-slate-500 flex items-center gap-1"><Phone className="w-3 h-3"/> {loan.phone}</span>
+                      </div>
+                      <div className="p-2 bg-slate-50 rounded-lg text-sm font-medium text-slate-800 flex justify-between items-center">
+                        {loan.equipmentName}
+                        <span className="bg-white border border-slate-200 px-2 py-0.5 rounded text-xs text-slate-600 shadow-sm">x{loan.quantity}</span>
+                      </div>
+                      {loan.purpose && (
+                        <div className="text-xs text-slate-500 mt-1 px-1">
+                          用途: {loan.purpose}
+                        </div>
+                      )}
+                    </div>
+
+                    {loan.status === 'borrowed' ? (
+                      <button onClick={()=>initiateReturn(loan.id)} className="w-full py-2 bg-green-600 text-white hover:bg-green-700 rounded-lg text-sm font-bold shadow-sm flex items-center justify-center gap-2">
+                        <CheckCircle className="w-4 h-4"/> 確認歸還
+                      </button>
+                    ) : (
+                      <div className="text-center text-xs text-green-600 py-2 bg-green-50 rounded-lg">
+                        歸還日期: {loan.returnDate}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {paginatedLoans.length === 0 && <div className="text-center py-10 text-slate-400">無紀錄</div>}
+                <PaginationControl currentPage={currentLoanPage} totalPages={totalLoanPages} onPageChange={setCurrentLoanPage} />
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden md:block bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm min-w-[1000px]">
+                    <thead className="bg-slate-50 border-b uppercase text-slate-500 text-xs sticky top-0 z-20 shadow-sm">
+                      <tr>
+                        <th className="p-4 font-semibold w-24 bg-slate-50">狀態</th>
+                        <th className="p-4 font-semibold w-48 bg-slate-50">借用人資訊</th>
+                        <th className="p-4 font-semibold w-48 bg-slate-50">設備 (數量)</th>
+                        <th className="p-4 font-semibold w-64 bg-slate-50">借用用途</th>
+                        <th className="p-4 font-semibold w-32 bg-slate-50">借用日期</th>
+                        <th className="p-4 font-semibold w-32 bg-slate-50">歸還日期</th>
+                        <th className="p-4 font-semibold text-right w-32 bg-slate-50 sticky right-0">動作</th>
                       </tr>
-                    ))}
-                    {loans.length === 0 && <tr><td colSpan="7" className="p-12 text-center text-slate-400">目前無借用紀錄</td></tr>}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {paginatedLoans.map(loan => (
+                        <tr key={loan.id} className={loan.status === 'borrowed' ? 'bg-orange-50/30' : ''}>
+                          <td className="p-4">
+                            {loan.status === 'borrowed' 
+                              ? <span className="text-orange-700 bg-orange-100 px-2.5 py-1 rounded-full text-xs font-bold border border-orange-200 whitespace-nowrap">借用中</span>
+                              : <span className="text-green-700 bg-green-100 px-2.5 py-1 rounded-full text-xs font-bold border border-green-200 whitespace-nowrap">已歸還</span>
+                            }
+                          </td>
+                          <td className="p-4">
+                            <div className="font-bold text-slate-700">{loan.borrower}</div>
+                            <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5"><Phone className="w-3 h-3"/> {loan.phone}</div>
+                          </td>
+                          <td className="p-4 font-medium text-slate-800">
+                            {loan.equipmentName} 
+                            <span className="ml-2 bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-xs font-mono">x{loan.quantity}</span>
+                          </td>
+                          <td className="p-4 text-slate-600 max-w-xs truncate" title={loan.purpose}>
+                            {loan.purpose || <span className="text-slate-300 italic">無</span>}
+                          </td>
+                          <td className="p-4 font-mono text-slate-500 whitespace-nowrap">{loan.borrowDate}</td>
+                          <td className="p-4 font-mono text-slate-500 whitespace-nowrap">{loan.returnDate || '-'}</td>
+                          <td className="p-4 text-right sticky right-0 bg-white (loan.status === 'borrowed' ? 'bg-orange-50/30' : '')">
+                            {loan.status === 'borrowed' && (
+                              <button onClick={()=>initiateReturn(loan.id)} className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95 whitespace-nowrap flex items-center gap-1 ml-auto">
+                                <CheckCircle className="w-3 h-3"/> 確認歸還
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {paginatedLoans.length === 0 && <tr><td colSpan="7" className="p-12 text-center text-slate-400">目前無借用紀錄</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <PaginationControl currentPage={currentLoanPage} totalPages={totalLoanPages} onPageChange={setCurrentLoanPage} />
               </div>
             </div>
           )}
