@@ -807,14 +807,16 @@ export default function App() {
       
       {toast && <Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)} />}
 
+      {/* 🟢 [FIXED] Mobile Sidebar Overlay (z-40) */}
       {isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-20 md:hidden backdrop-blur-sm transition-opacity"
+          className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm transition-opacity"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
-      <aside className={`fixed md:relative z-30 w-64 bg-teal-800 text-teal-50 h-screen transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 flex flex-col shadow-2xl`}>
+      {/* 🟢 [FIXED] Sidebar (z-50) */}
+      <aside className={`fixed md:relative z-50 w-64 bg-teal-800 text-teal-50 h-screen transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 flex flex-col shadow-2xl`}>
         <div className="p-6 bg-teal-900/40">
           <h1 className="text-xl font-bold flex items-center"><Beaker/> 實驗室設備管理系統</h1>
         </div>
