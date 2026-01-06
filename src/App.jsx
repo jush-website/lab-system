@@ -1069,7 +1069,7 @@ export default function App() {
                             disabled={available <= 0}
                             className={`w-full py-1.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 ${available <= 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'}`}
                           >
-                            <Plus className="w-4 h-4"/> 加入
+                            <Plus className="w-4 h-4"/> 加入借用
                           </button>
                         </div>
                       </div>
