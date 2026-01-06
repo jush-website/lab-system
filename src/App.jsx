@@ -1069,7 +1069,7 @@ export default function App() {
                             disabled={available <= 0}
                             className={`w-full py-1.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 ${available <= 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'}`}
                           >
-                            <Plus className="w-4 h-4"/> 加入借用
+                            <Plus className="w-4 h-4"/> 加入
                           </button>
                         </div>
                       </div>
@@ -1130,7 +1130,7 @@ export default function App() {
                                 disabled={available <= 0}
                                 className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap ${available <= 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'}`}
                               >
-                                <Plus className="w-3.5 h-3.5"/> {available <= 0 ? '缺貨' : '加入'}
+                                <Plus className="w-3.5 h-3.5"/> {available <= 0 ? '缺貨' : '加入清單'}
                               </button>
                               <button onClick={()=>openEquipModal(item)} className="p-2 text-slate-400 hover:text-teal-600 bg-transparent hover:bg-teal-50 rounded-lg"><Edit2 className="w-4 h-4"/></button>
                               <button onClick={()=>deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment', item.id))} className="p-2 text-slate-400 hover:text-red-600 bg-transparent hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4"/></button>
