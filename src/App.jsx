@@ -26,12 +26,7 @@ import {
   writeBatch,
   getDocs
 } from 'firebase/firestore';
-import { 
-  getStorage, 
-  ref, 
-  uploadBytes, 
-  getDownloadURL 
-} from 'firebase/storage';
+// 🔴 已移除 Firebase Storage 相關引用
 import { 
   Beaker, ClipboardList, Settings, LogOut, Plus, Search, Trash2, Edit2, 
   Download, Filter, AlertTriangle, User, LayoutGrid, Menu, X, CheckCircle, 
@@ -57,11 +52,48 @@ const YOUR_FIREBASE_CONFIG = {
 const app = initializeApp(YOUR_FIREBASE_CONFIG);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app); 
+// 🔴 已移除 const storage = getStorage(app); 
 const appId = 'lab-management-system-production';
 
 // --- 常數設定 ---
 const ITEMS_PER_PAGE = 6; // 每頁顯示 6 筆
+
+// --- 🔵 工具函式：圖片壓縮轉 Base64 ---
+// 這是為了確保圖片不會超過 Firestore 1MB 的限制
+const compressImage = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        // 設定最大寬度為 800px，高度等比例縮放
+        const maxWidth = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // 轉成 JPEG 格式，品質設定為 0.6 (60%)
+        // 這樣可以大幅減少體積，適合存入資料庫
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        resolve(dataUrl);
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
 
 // --- 元件：自定義確認視窗 (一般/危險操作) ---
 const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isDangerous }) => {
@@ -107,7 +139,7 @@ const ReturnModal = ({ isOpen, loan, onConfirm, onCancel }) => {
             {loan.equipmentName}<br/>
             (目前借用: {loan.quantity})
           </p>
-          
+           
           <div className="mb-6">
             <label className="block text-sm font-bold text-slate-700 mb-2 text-center">本次歸還數量</label>
             <div className="flex items-center justify-center gap-3">
@@ -338,8 +370,10 @@ export default function App() {
   // Forms State
   const [sessionForm, setSessionForm] = useState({ name: '', date: '', copyFromPrevious: false });
   const [equipForm, setEquipForm] = useState({ name: '', quantity: 1, categoryId: '', note: '', imageUrl: '' });
-  const [equipImage, setEquipImage] = useState(null); 
+  
+  // 🔵 修改：移除了 equipImage 檔案物件 State，因為我們直接轉換成 Base64
   const [equipImagePreview, setEquipImagePreview] = useState(''); 
+  const [isCompressing, setIsCompressing] = useState(false); // 新增：圖片處理中狀態
   
   const [catForm, setCatForm] = useState({ name: '' });
   const [cartItems, setCartItems] = useState([]);
@@ -511,15 +545,21 @@ export default function App() {
       }));
   };
 
-  const handleImageChange = (e) => {
+  // 🔵 修改：圖片處理邏輯 - 壓縮並轉 Base64
+  const handleImageChange = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      setEquipImage(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setEquipImagePreview(reader.result);
-      };
-      reader.readAsDataURL(file);
+      try {
+        setIsCompressing(true);
+        // 使用壓縮工具函式
+        const base64String = await compressImage(file);
+        setEquipImagePreview(base64String);
+        setIsCompressing(false);
+      } catch (error) {
+        console.error("Image processing error:", error);
+        showToast("圖片處理失敗", "error");
+        setIsCompressing(false);
+      }
     }
   };
 
@@ -597,27 +637,27 @@ export default function App() {
           createdAt: serverTimestamp()
         });
         if (sessionForm.copyFromPrevious && sessions.length > 0) {
-             const latestSession = sessions[0];
-             const qSource = query(collection(db, 'artifacts', appId, 'public', 'data', 'equipment'), where('sessionId', '==', latestSession.id));
-             const sourceDocs = await getDocs(qSource);
-             const batch = writeBatch(db);
-             let count = 0;
-             sourceDocs.forEach(docSnap => {
-                 const data = docSnap.data();
-                 const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'equipment'));
-                 batch.set(newRef, {
-                     ...data,
-                     sessionId: newSessionRef.id,
-                     borrowedCount: 0,
-                     updatedAt: serverTimestamp(),
-                     createdAt: serverTimestamp()
-                 });
-                 count++;
-             });
-             if (count > 0) await batch.commit();
-             showToast(`已建立版次並複製 ${count} 項設備`);
+              const latestSession = sessions[0];
+              const qSource = query(collection(db, 'artifacts', appId, 'public', 'data', 'equipment'), where('sessionId', '==', latestSession.id));
+              const sourceDocs = await getDocs(qSource);
+              const batch = writeBatch(db);
+              let count = 0;
+              sourceDocs.forEach(docSnap => {
+                  const data = docSnap.data();
+                  const newRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'equipment'));
+                  batch.set(newRef, {
+                      ...data,
+                      sessionId: newSessionRef.id,
+                      borrowedCount: 0,
+                      updatedAt: serverTimestamp(),
+                      createdAt: serverTimestamp()
+                  });
+                  count++;
+              });
+              if (count > 0) await batch.commit();
+              showToast(`已建立版次並複製 ${count} 項設備`);
         } else {
-             showToast("版次建立成功");
+              showToast("版次建立成功");
         }
       }
       setIsModalOpen(false);
@@ -633,20 +673,21 @@ export default function App() {
     });
   };
 
+  // 🔵 修改：handleSaveEquipment - 直接使用 Base64 字串儲存
   const handleSaveEquipment = async (e) => {
     e.preventDefault();
     if (!currentSession) return;
-    let imageUrl = equipForm.imageUrl || '';
-    if (equipImage) {
-        try {
-            const imageRef = ref(storage, `equipment_images/${Date.now()}_${equipImage.name}`);
-            const snapshot = await uploadBytes(imageRef, equipImage);
-            imageUrl = await getDownloadURL(snapshot.ref);
-        } catch (error) {
-            console.error("Image upload failed:", error);
-            showToast("圖片上傳失敗 (請檢查 Storage 設定)", "error");
-        }
+    
+    // 如果在壓縮中，阻止儲存
+    if (isCompressing) {
+        showToast("圖片正在處理中，請稍候...", "error");
+        return;
     }
+
+    // 直接使用預覽圖 (Base64) 作為 imageUrl
+    // 如果使用者沒有更換圖片，equipImagePreview 會是原本的 Base64 或舊的 URL
+    let imageUrl = equipImagePreview || '';
+
     try {
       const cat = categories.find(c => c.id === equipForm.categoryId);
       const payload = {
@@ -655,7 +696,7 @@ export default function App() {
         categoryId: equipForm.categoryId,
         categoryName: cat ? cat.name : '未分類',
         note: equipForm.note,
-        imageUrl: imageUrl, 
+        imageUrl: imageUrl, // 存入 Base64
         sessionId: currentSession.id,
         ...(editItem ? {} : { borrowedCount: 0 }), 
         updatedAt: serverTimestamp()
@@ -664,7 +705,10 @@ export default function App() {
       else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'equipment'), payload);
       setIsModalOpen(false);
       showToast("設備儲存成功");
-    } catch (err) { showToast("錯誤", "error"); }
+    } catch (err) { 
+        console.error(err);
+        showToast("錯誤 (可能圖片太大)", "error"); 
+    }
   };
 
   const handleSaveCategory = async (e) => { e.preventDefault(); try { if (editItem) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categories', editItem.id), {name: catForm.name}); else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'categories'), {name: catForm.name}); setIsModalOpen(false); showToast("分類儲存成功"); } catch (err) { showToast("錯誤", "error"); } };
@@ -783,7 +827,7 @@ export default function App() {
       setModalType('equipment'); 
       setEditItem(item); 
       setEquipForm(item ? {name: item.name, quantity: item.quantity, categoryId: item.categoryId, note: item.note, imageUrl: item.imageUrl} : {name: '', quantity: 1, categoryId: categories[0]?.id || '', note: '', imageUrl: ''}); 
-      setEquipImage(null);
+      // 直接設定 Base64 預覽
       setEquipImagePreview(item?.imageUrl || '');
       setIsModalOpen(true); 
   };
@@ -1377,43 +1421,48 @@ export default function App() {
                     {equipImagePreview ? (
                       <div className="relative w-24 h-24">
                         <img src={equipImagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg border" />
-                        <button type="button" onClick={() => { setEquipImage(null); setEquipImagePreview(''); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"><X className="w-3 h-3"/></button>
+                        <button type="button" onClick={() => setEquipImagePreview('')} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"><X className="w-3 h-3"/></button>
                       </div>
                     ) : (
                       <div className="w-24 h-24 bg-slate-100 border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center text-slate-400">
-                        <ImageIcon className="w-8 h-8" />
+                         {isCompressing ? <div className="animate-spin w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full"></div> : <ImageIcon className="w-8 h-8" />}
                       </div>
                     )}
                     <div className="flex-1 flex flex-col gap-2">
-                       <input 
-                         type="file" 
-                         accept="image/*" 
-                         capture="environment" // Camera
-                         id="equip-camera-upload"
-                         className="hidden"
-                         onChange={handleImageChange}
-                       />
-                       <label htmlFor="equip-camera-upload" className="cursor-pointer bg-teal-50 border border-teal-200 text-teal-700 px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-teal-100 w-full shadow-sm font-medium transition-colors">
-                         <Camera className="w-4 h-4" /> 拍攝照片
-                       </label>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          capture="environment" // Camera
+                          id="equip-camera-upload"
+                          className="hidden"
+                          onChange={handleImageChange}
+                          disabled={isCompressing}
+                        />
+                        <label htmlFor="equip-camera-upload" className={`cursor-pointer bg-teal-50 border border-teal-200 text-teal-700 px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-teal-100 w-full shadow-sm font-medium transition-colors ${isCompressing ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                          <Camera className="w-4 h-4" /> 拍攝照片
+                        </label>
 
-                       <input 
-                         type="file" 
-                         accept="image/*" 
-                         // No capture attribute -> File Picker
-                         id="equip-file-upload"
-                         className="hidden"
-                         onChange={handleImageChange}
-                       />
-                       <label htmlFor="equip-file-upload" className="cursor-pointer bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-slate-50 w-full shadow-sm font-medium transition-colors">
-                         <Upload className="w-4 h-4" /> 上傳檔案
-                       </label>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          // No capture attribute -> File Picker
+                          id="equip-file-upload"
+                          className="hidden"
+                          onChange={handleImageChange}
+                          disabled={isCompressing}
+                        />
+                        <label htmlFor="equip-file-upload" className={`cursor-pointer bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-slate-50 w-full shadow-sm font-medium transition-colors ${isCompressing ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                          <Upload className="w-4 h-4" /> 上傳檔案
+                        </label>
                     </div>
                   </div>
+                  {isCompressing && <p className="text-xs text-teal-600 mt-1">正在壓縮圖片中...</p>}
                 </div>
 
                 <div><label className="text-sm font-bold text-slate-700 mb-1 block">備註</label><input className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-teal-500 outline-none" value={equipForm.note} onChange={e=>setEquipForm({...equipForm, note:e.target.value})}/></div>
-                <button type="submit" className="w-full bg-teal-600 text-white py-3 rounded-xl font-bold hover:bg-teal-700 transition-colors">儲存</button>
+                <button type="submit" disabled={isCompressing} className="w-full bg-teal-600 text-white py-3 rounded-xl font-bold hover:bg-teal-700 transition-colors disabled:opacity-50">
+                    {isCompressing ? '圖片處理中...' : '儲存'}
+                </button>
               </form>
             )}
 
