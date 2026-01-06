@@ -44,13 +44,13 @@ import {
 // 🟢 您的 Firebase 設定
 // ==========================================
 const YOUR_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDT27VtfNpabeloAXh31gSIIodygJNvDsU",
-  authDomain: "lab-management-5fc5d.firebaseapp.com",
-  projectId: "lab-management-5fc5d",
-  storageBucket: "lab-management-5fc5d.firebasestorage.app",
-  messagingSenderId: "762555415570",
-  appId: "1:762555415570:web:d4ee52fd7971d8e0996ccb",
-  measurementId: "G-TEL1QYTRCK"
+  apiKey: "AIzaSyABbI80ZUt5nhuIB5bkc2sOnLyZXCC2bmE",
+  authDomain: "lab-assets-7e996.firebaseapp.com",
+  projectId: "lab-assets-7e996",
+  storageBucket: "lab-assets-7e996.firebasestorage.app",
+  messagingSenderId: "773589657868",
+  appId: "1:773589657868:web:66e391857687c324784129",
+  measurementId: "G-1KGF96H6MY"
 };
 
 // --- 系統初始化 ---
